@@ -1,10 +1,10 @@
 /* Settle — offline support. Network first so updates show straight away; the cache is the fallback.
    Only touches its own caches and its own folder, so other apps on the same site are unaffected. */
-const CACHE = 'settle-v1';
+const CACHE = 'settle-v2';
 const SHELL = [
-  './', './index.html', './app.css', './core.js', './data.js', './body.js', './insights.js', './flows.js', './views.js', './settings.js',
+  './', './index.html', './app.css', './core.js', './art.js', './data.js', './body.js', './insights.js', './flows.js', './views.js', './settings.js',
   './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
-  './fonts/nunito-400.woff2', './fonts/nunito-700.woff2', './fonts/nunito-800.woff2',
+  './fonts/nunito-400.woff2', './fonts/nunito-700.woff2', './fonts/nunito-800.woff2', './fonts/fraunces-600.woff2',
 ];
 
 self.addEventListener('install', e => {

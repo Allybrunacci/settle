@@ -58,7 +58,7 @@ function entryCard(e, opts = {}) {
   return `<li><a class="entry" href="#/entry/${esc(e.id)}">
     <span class="e-time num">${fmtTime(e.at)}</span>
     <span class="e-main">${lvl(e.act, true)}${extra.length ? `<small class="e-tags">${esc(extra.slice(0, 4).join(', '))}${extra.length > 4 ? '…' : ''}</small>` : ''}
-      ${e.uses.map(u => `<span class="e-use">${icon(catById((toolById(u.tool) || {}).cat).icon, 'sm')}<span>${esc(toolName(u.tool))} · ${u.secs >= 60 ? `${Math.round(u.secs / 60)} min` : `${u.secs} sec`}</span>${u.after !== null ? lvlArrow(u.before, u.after) : '<span class="muted">not rated</span>'}${u.rating ? `<span class="muted">${RATINGS[u.rating - 1]}</span>` : ''}</span>`).join('')}
+      ${e.uses.map(u => `<span class="e-use">${ART.vig((toolById(u.tool) || {}).cat)}<span>${esc(toolName(u.tool))} · ${u.secs >= 60 ? `${Math.round(u.secs / 60)} min` : `${u.secs} sec`}</span>${u.after !== null ? lvlArrow(u.before, u.after) : '<span class="muted">not rated</span>'}${u.rating ? `<span class="muted">${RATINGS[u.rating - 1]}</span>` : ''}</span>`).join('')}
       ${Object.keys(e.body).length ? `<small class="e-body">${icon('body', 'sm')}${esc(bodySummary(e.body))}</small>` : ''}
       ${e.note && !opts.noNote ? `<small class="e-note">“${esc(e.note.length > 90 ? e.note.slice(0, 90) + '…' : e.note)}”</small>` : ''}</span>
     ${icon('chev-r', 'go')}</a></li>`;
@@ -76,19 +76,19 @@ VIEWS.today = {
     const st = toolStats();
     const best = st.ranked.filter(x => x.n >= 2 && x.avgDrop > 0).slice(0, 3);
     const vals = list.map(e => e.act);
-    return `<header class="page-head"><p class="eyebrow">${fmtDayLong(t)}</p><h1>${greeting()}</h1></header>
+    return `${pageHead(greeting(), '', { eyebrow: fmtDayLong(t) })}
     ${banners()}
-    <section class="hero card">
+    <section class="hero card">${ART.scape()}<div class="hero-body">
       <h2>How’s your nervous system?</h2>
       ${last ? `<p class="last">Last reading ${ago(lastAt)}: ${lvl(lastLvl, true)}</p>` : '<p class="last">Check in any time: when you wake, when something happens, before bed.</p>'}
       <a class="btn primary big wide" href="#/checkin">${icon('plus')}Check in</a>
       ${recent && lastLvl >= 9 ? crisisCard() : ''}
-    </section>
+    </div></section>
     ${installCard()}
     ${list.length ? `<section class="card"><div class="row-between"><h2 class="h3">Today</h2><span class="muted">${plural(list.length, 'check-in')} · average ${f1(avg(vals))} · highest ${Math.max(...vals)}</span></div>${todayChart(list)}</section>` : ''}
     ${recent && lastLvl >= 4 ? `<section><h2 class="h3">Try right now</h2><ul class="tool-list">${suggest(lastLvl, { feels: last.feels, body: last.body, n: 3 }).map(x => toolRow(x.t, st).replace('<span class="meta">', `<span class="why">${esc(x.why || '')}</span><span class="meta">`)).join('')}</ul></section>` : ''}
     <section><div class="row-between"><h2 class="h3">Favourites</h2><a class="link" href="#/tools">All tools</a></div>
-      ${favs.length ? `<div class="fav-row">${favs.map(f => `<button type="button" class="fav-chip" data-act="open" data-id="${f.id}">${icon(catById(f.cat).icon)}<span>${esc(f.name)}</span></button>`).join('')}</div>`
+      ${favs.length ? `<div class="fav-row">${favs.map(f => `<button type="button" class="fav-chip" data-act="open" data-id="${f.id}">${ART.vig(f.cat)}<span>${esc(f.name)}</span></button>`).join('')}</div>`
         : `<p class="muted">Tap the star on any tool and it will show up here, ready to start.</p>`}</section>
     ${best.length ? `<section class="card"><div class="row-between"><h2 class="h3">What works for you</h2><a class="link" href="#/insights">Insights</a></div>
       <ol class="best">${best.map(b => `<li><button type="button" class="linkish" data-act="open" data-id="${esc(b.id)}">${esc(toolName(b.id))}</button><span><span class="good">${f1(b.avgDrop)} calmer on average</span> <span class="muted">· ${plural(b.n, 'use')}</span></span></li>`).join('')}</ol></section>` : ''}
@@ -127,9 +127,9 @@ VIEWS.tools = {
     const body = !list.length
       ? empty('search', 'No tools match', TL.cat === 'fav' && !S.favs.length ? 'You haven’t starred any tools yet. Tap the star next to a tool to add it.' : 'Try another word, or clear the filters.', '<button type="button" class="btn outline" data-act="clear">Clear filters</button>')
       : grouped
-        ? CATS.map(c => `<section class="cat"><h2 class="h3">${icon(c.icon)}${c.name}</h2><ul class="tool-list">${list.filter(t => t.cat === c.id).map(t => toolRow(t, st)).join('')}</ul></section>`).join('')
+        ? CATS.map(c => `<section class="cat"><h2 class="h3">${ART.vig(c.id)}${c.name}</h2><ul class="tool-list">${list.filter(t => t.cat === c.id).map(t => toolRow(t, st)).join('')}</ul></section>`).join('')
         : `<p class="muted" aria-live="polite">${plural(list.length, 'tool')}</p><ul class="tool-list">${list.map(t => toolRow(t, st)).join('')}</ul>`;
-    return `<header class="page-head"><h1>Tools</h1><p class="sub">${TOOLS.length} body-based ways to settle your nervous system</p></header>
+    return `${pageHead('Tools', `${TOOLS.length} body-based ways to settle your nervous system`, { flip: true })}
       <div class="search"><label class="sr" for="tl-q">Search tools</label>${icon('search')}<input id="tl-q" type="search" placeholder="Search, e.g. breath, jaw, sleep" value="${esc(TL.q)}" autocomplete="off"></div>
       <div class="chips scroll" role="group" aria-label="Group">${[['all', 'All'], ['fav', 'Favourites'], ...CATS.map(c => [c.id, c.name])].map(([id, name]) => `<button type="button" class="chip${TL.cat === id ? ' on' : ''}" data-act="cat" data-id="${id}" aria-pressed="${TL.cat === id}">${id === 'fav' ? icon('star', 'sm') : ''}${name}</button>`).join('')}</div>
       <div class="chips scroll" role="group" aria-label="Good for"><span class="chips-label">Good for</span>${Object.entries(GOOD).map(([id, name]) => `<button type="button" class="chip${TL.good === id ? ' on' : ''}" data-act="good" data-id="${id}" aria-pressed="${TL.good === id}">${name}</button>`).join('')}</div>
@@ -154,13 +154,13 @@ const HI = { f: 'all', shown: 60 };
 VIEWS.history = {
   title: 'History',
   render() {
-    if (!S.entries.length) return `<header class="page-head"><h1>History</h1></header>${empty('clock', 'No check-ins yet', 'Your check-ins and the tools you try will show up here.', '<a class="btn primary" href="#/checkin">Check in</a>')}`;
+    if (!S.entries.length) return `${pageHead('History')}${empty('clock', 'No check-ins yet', 'Your check-ins and the tools you try will show up here.', '<a class="btn primary" href="#/checkin">Check in</a>')}`;
     const f = { all: () => true, tool: e => e.uses.length > 0, body: e => Object.keys(e.body).length > 0, note: e => !!(e.note || e.uses.some(u => u.note)) }[HI.f];
     const list = S.entries.filter(f).slice().reverse();
     const shown = list.slice(0, HI.shown);
     const days = [];
     for (const e of shown) { const k = dayOf(e.at); if (!days.length || days[days.length - 1].k !== k) days.push({ k, items: [] }); days[days.length - 1].items.push(e); }
-    return `<header class="page-head"><h1>History</h1><p class="sub">${plural(S.entries.length, 'check-in')} since ${fmtDay(dayOf(S.entries[0].at))}</p></header>
+    return `${pageHead('History', `${plural(S.entries.length, 'check-in')} since ${fmtDay(dayOf(S.entries[0].at))}`)}
       <div class="chips scroll" role="group" aria-label="Show">${[['all', 'All'], ['tool', 'With a tool'], ['body', 'Pain or tension'], ['note', 'With a note']].map(([id, name]) => `<button type="button" class="chip${HI.f === id ? ' on' : ''}" data-act="f" data-id="${id}" aria-pressed="${HI.f === id}">${name}</button>`).join('')}</div>
       ${days.length ? days.map(d => { const all = entriesOn(d.k).map(e => e.act); return `<section class="day"><h2 class="day-head"><span>${relDay(d.k)}</span><small>${plural(all.length, 'check-in')} · average ${f1(avg(all))}</small></h2><ul class="entries">${d.items.map(e => entryCard(e)).join('')}</ul></section>`; }).join('')
         : '<p class="muted pad">Nothing matches this filter yet.</p>'}
@@ -182,7 +182,7 @@ VIEWS.entry = {
     if (!e) return `${backBtn('#/history', 'History')}${empty('search', 'Check-in not found', 'It may have been deleted.')}`;
     const recent = Date.now() - e.at < 3 * 3600000;
     return `${backBtn('#/history', 'History')}
-    <header class="page-head"><p class="eyebrow">${relDay(dayOf(e.at))}</p><h1>${fmtTime(e.at)} check-in</h1></header>
+    ${pageHead(`${fmtTime(e.at)} check-in`, '', { eyebrow: relDay(dayOf(e.at)), flip: true })}
     <section class="card">
       <div class="big-lvl">${lvl(e.act)}<div><b>${lvlWord(e.act)}</b><p class="muted">${LEVELS[e.act][1]}</p></div></div>
       ${e.src === 'tool' ? '<p class="hint">Recorded when you started a tool.</p>' : ''}

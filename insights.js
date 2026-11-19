@@ -101,7 +101,7 @@ VIEWS.insights = {
   render() {
     const R = periodRange(IN.p);
     const list = S.entries.filter(e => inRange(e, R.from, R.to));
-    const head = `<header class="page-head"><h1>Insights</h1><p class="sub">Your stress levels and what settles you</p></header>${periodChips(IN.p)}`;
+    const head = `${pageHead('Insights', 'Your stress levels and what settles you')}${periodChips(IN.p)}`;
     if (!list.length) return `${head}${empty('chart', S.entries.length ? 'No check-ins in this period' : 'Nothing to show yet', S.entries.length ? 'Choose a longer period to see more.' : 'Check in a few times and try some tools. Your patterns will show up here.', S.entries.length ? '' : '<a class="btn primary" href="#/checkin">Check in</a>')}`;
     const prev = R.prevFrom !== null ? S.entries.filter(e => inRange(e, R.prevFrom, R.prevTo)) : [];
     const acts = list.map(e => e.act), mean = avg(acts);
@@ -132,7 +132,7 @@ VIEWS.insights = {
     </section>
     <section class="card"><h2 class="h3">How often you were in each zone</h2>
       <div class="zbar" role="img" aria-label="${ZONES.map((z, i) => `${z.name} ${Math.round(zoneN[i] / acts.length * 100)}%`).join(', ')}">${ZONES.map((z, i) => (zoneN[i] ? `<i class="z-${z.id}" style="flex:${zoneN[i]}"></i>` : '')).join('')}</div>
-      <ul class="zkey">${ZONES.map((z, i) => `<li><i class="z-${z.id}"></i><b>${z.name}</b> <span class="muted">${z.range}</span> <span class="num">${Math.round(zoneN[i] / acts.length * 100)}%</span></li>`).join('')}</ul></section>
+      <ul class="zkey">${ZONES.map((z, i) => `<li><i class="z-${z.id}"></i>${icon({ low: 'leaf', mid: 'wind', high: 'cloud' }[z.id], 'sm')}<b>${z.name}</b> <span class="muted">${z.range}</span> <span class="num">${Math.round(zoneN[i] / acts.length * 100)}%</span></li>`).join('')}</ul></section>
     <section class="card"><h2 class="h3">Activation over time</h2>${dayChart(list, R.from, R.days)}</section>
     <section class="card"><h2 class="h3">What works best for you</h2>
       <div class="seg wide" role="radiogroup" aria-label="Starting level">${[['any', 'Any level', 'Any'], ['high', 'High, 7 to 10', '7–10'], ['mid', 'Activated, 4 to 6', '4–6'], ['low', 'Settled, 0 to 3', '0–3']].map(([id, name, short]) => `<button type="button" role="radio" aria-checked="${IN.z === id}" aria-label="${name}" class="${IN.z === id ? 'on' : ''}" data-act="zone" data-id="${id}">${short}</button>`).join('')}</div>
@@ -165,7 +165,7 @@ VIEWS.body = {
     const list = S.entries.filter(e => inRange(e, R.from, R.to));
     const stats = bodyStats(list, BD.kind);
     const rows = Object.values(stats);
-    const head = `<header class="page-head"><h1>Body</h1><p class="sub">Where you feel pain and tension</p></header>${periodChips(BD.p)}`;
+    const head = `${pageHead('Body', 'Where you feel pain and tension', { flip: true })}${periodChips(BD.p)}`;
     if (!rows.length) return `${head}${empty('body', S.entries.some(e => Object.keys(e.body).length) ? 'Nothing marked in this period' : 'No pain or tension logged yet', 'When you check in, tap “Mark it on the body” to show where you feel it. This map then shows where it shows up most.', '<a class="btn primary" href="#/checkin">Check in</a>')}`;
     const val = r => (BD.mode === 'strength' ? r.avg : BD.mode === 'often' ? r.share : r.load);
     const max = Math.max(...rows.map(val));

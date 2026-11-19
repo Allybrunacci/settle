@@ -61,7 +61,7 @@ VIEWS.checkin = {
     else CK.left = 0;
     const edit = !!CK.id;
     const hasTool = !!S.active && !S.active.done;
-    return `<header class="stage-head"><button type="button" class="icon-btn" data-act="cancel" aria-label="Close">${icon('close')}</button><h1>${edit ? 'Edit check-in' : 'Check in'}</h1></header>
+    return `<header class="stage-head"><button type="button" class="icon-btn" data-act="cancel" aria-label="Close">${icon('close')}</button><h1>${edit ? 'Edit check-in' : 'Check in'}</h1>${ART.sprig(true)}</header>
     <div class="flow">
       ${hasTool && !edit ? `<div class="note-card">${icon('clock')}<div><b>You have a session running.</b><p><a href="#/session">Go back to ${esc(toolName(S.active.tool))}</a></p></div></div>` : ''}
       <section class="q-card" id="q-act"><h2>How activated is your nervous system right now?</h2>
@@ -178,7 +178,7 @@ function toolRow(t, stats) {
   const a0 = t.durs[0], a1 = t.durs[t.durs.length - 1];
   const ranges = a0 < 1 ? `${durLabel(a0)}–${durLabel(a1)}` : `${a0}–${a1} min`;
   return `<li class="tool-row"><button type="button" class="tool-main" data-act="open" data-id="${t.id}">
-      <span class="tool-ico" aria-hidden="true">${icon(catById(t.cat).icon)}</span>
+      <span class="tool-ico" aria-hidden="true">${ART.vig(t.cat)}</span>
       <span class="tool-txt"><b>${esc(t.name)}</b><small>${esc(t.short)}</small>
       <span class="meta">${ranges}${s && s.n ? ` · <span class="good">${s.avgDrop > 0.05 ? `${f1(s.avgDrop)} calmer on average` : 'no change on average'}</span> (${plural(s.n, 'use')})` : ''}</span></span></button>
     <button type="button" class="star${isFav(t.id) ? ' on' : ''}" data-act="fav" data-id="${t.id}" aria-pressed="${isFav(t.id)}" aria-label="${isFav(t.id) ? 'Remove from favourites' : 'Add to favourites'}: ${esc(t.name)}">${icon(isFav(t.id) ? 'star' : 'star-o')}</button></li>`;
@@ -205,7 +205,7 @@ VIEWS.pick = {
     const stats = toolStats();
     const favs = S.favs.map(toolById).filter(Boolean);
     const list = filterTools(PK.q, PK.cat);
-    return `<header class="stage-head"><button type="button" class="icon-btn" data-act="close" aria-label="Close">${icon('close')}</button><h1>Choose a tool</h1></header>
+    return `<header class="stage-head"><button type="button" class="icon-btn" data-act="close" aria-label="Close">${icon('close')}</button><h1>Choose a tool</h1>${ART.sprig(true)}</header>
     <div class="flow">
       <p class="lead">For your ${fmtTime(e.at)} check-in ${lvl(lev, true)}</p>
       ${lev >= 9 ? crisisCard() : ''}
@@ -253,7 +253,7 @@ function openToolSheet(id, opts = {}) {
     const s = toolStats().all[id];
     const running = S.active && !S.active.done;
     const durs = t.durs;
-    return `${sheetHead(esc(t.name), `${icon(catById(t.cat).icon, 'sm')}${catById(t.cat).name}`)}
+    return `${sheetHead(esc(t.name), `<span class="sub-vig">${ART.vig(t.cat)}</span>${catById(t.cat).name}`)}
     <div class="tool-sheet">
       <p class="lead">${esc(t.short)}</p>
       <div class="chips tight">${t.good.map(x => `<span class="tag">${GOOD[x]}</span>`).join('')}</div>
@@ -384,7 +384,7 @@ function guideHtml(t, a) {
   if (g.t === 'senses') return `<div class="senses" id="senses"></div>`;
   if (g.t === 'bilateral') return `<div class="bilateral"><div class="pads" aria-hidden="true"><span class="pad" id="pad-l">L</span><span class="pad" id="pad-r">R</span></div>
       <p class="center muted">Tap left, then right, with the lights.</p><div class="chips center" role="radiogroup" aria-label="Pace">${g.rates.map(([r, name]) => `<button type="button" role="radio" class="chip${a.rate === r ? ' on' : ''}" aria-checked="${a.rate === r}" data-act="setrate" data-r="${r}">${name}</button>`).join('')}</div></div>`;
-  if (g.t === 'sway') return `<div class="sway"><div class="sway-track" aria-hidden="true"><span class="sway-dot" id="sway-dot"></span></div><p class="center step-txt small" id="sway-txt">Rock with the dot</p>
+  if (g.t === 'sway') return `<div class="sway"><div class="sway-track" aria-hidden="true"><span class="sway-dot" id="sway-dot">${ART.leafDot()}</span></div><p class="center step-txt small" id="sway-txt">Rock with the leaf</p>
       <div class="chips center" role="radiogroup" aria-label="Pace">${g.rates.map(([r, name]) => `<button type="button" role="radio" class="chip${a.rate === r ? ' on' : ''}" aria-checked="${a.rate === r}" data-act="setrate" data-r="${r}">${name}</button>`).join('')}</div></div>`;
   if (g.t === 'tapcount') return `<div class="tapcount"><button type="button" class="tap-orb" data-act="tapbreath" aria-label="Tap at the end of each out-breath"><span class="num" id="tc-n">0</span><small>Tap after each out-breath</small></button>
       <p class="center" id="tc-rate" aria-live="polite">Breathe naturally.</p></div>`;
@@ -411,7 +411,7 @@ VIEWS.session = {
       <header class="ph"><button type="button" class="icon-btn" data-act="stop" aria-label="Stop the session">${icon('close')}</button>
         <div class="ph-title"><b>${esc(t.name)}</b><small>${pat ? esc(pat.label) + ' · ' : ''}${durLabel(a.mins)}</small></div>
         <button type="button" class="icon-btn" data-act="how" aria-label="How to do it">${icon('help')}</button></header>
-      <div class="guide">${guideHtml(t, a)}</div>
+      <div class="guide">${guideHtml(t, a)}${ART.hills()}</div>
       <div class="timer"><div class="t-row"><span class="t-left num" id="t-left">${fmtClock(a.mins * 60000 - elapsedOf(a))}</span><span class="t-of" id="t-of">left</span></div>
         <div class="t-bar" aria-hidden="true"><i id="t-bar"></i></div></div>
       <div class="controls">
@@ -536,6 +536,8 @@ VIEWS.session = {
       if (PL.taps.length > 40) PL.taps.shift();
       const n = (PL.taps.length - 1) % 10 + 1;
       $('#tc-n').textContent = n;
+      const orb = $('.tap-orb');
+      if (orb && !reduceMotion()) { orb.classList.remove('rip'); void orb.offsetWidth; orb.classList.add('rip'); }
       buzz(10);
       if (n === 10) tone(659, 0.6, { gain: 0.08 });
       const iv = PL.taps.slice(-7).map((t, i, a) => (i ? t - a[i - 1] : null)).filter(x => x && x >= 1500 && x < 30000).sort((x, y) => x - y);
@@ -635,7 +637,7 @@ VIEWS.after = {
     const secs = Math.round(Math.min(a.mins * 60000, elapsedOf(a)) / 1000);
     const full = secs >= a.mins * 60 - 2;
     const hadBody = e && Object.keys(latestBody(e)).length;
-    return `<header class="stage-head"><span></span><h1>How did that go?</h1></header>
+    return `<header class="stage-head"><span></span><h1>How did that go?</h1>${ART.sprig(true)}</header>
     <div class="flow">
       <p class="lead">${esc(t ? t.name : 'Your tool')} · ${full ? durLabel(a.mins) : `${fmtSecs(secs)} of ${durLabel(a.mins)}`}</p>
       <section class="q-card" id="q-rating"><h2>How well did it work?</h2>

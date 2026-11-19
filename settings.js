@@ -9,7 +9,7 @@ function applyTheme() {
   const dark = S.prefs.theme === 'dark' || (S.prefs.theme === 'auto' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   const m = $('meta[name="theme-color"]');
-  if (m) m.content = dark ? '#121715' : '#F4F1EA';
+  if (m) m.content = dark ? '#171A15' : '#F2EDE3';
 }
 if (window.matchMedia) { try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme()); } catch (e) { /* old browser */ } }
 
@@ -132,14 +132,14 @@ function startOnboarding() {
   let step = 0;
   const picks = new Set(S.favs.length ? S.favs : []);
   const steps = [
-    () => `<div class="ob-art" aria-hidden="true"><svg viewBox="0 0 120 120"><circle cx="60" cy="44" r="16" class="sun"/><path d="M18 74c14-9 28-9 42 0s28 9 42 0" class="w1"/><path d="M26 92c11-5 23-5 34 0s23 5 34 0" class="w2"/><path d="M36 108h48" class="w3"/></svg></div>
+    () => `<div class="ob-art">${ART.scape()}</div>
       <h1>Welcome to Settle</h1><p class="lead">Notice how activated your nervous system is, try body-based tools to settle it, and learn what works for you.</p>
       <ul class="plain ob-list"><li>${icon('plus')}Check in any time with a quick 0 to 10 rating</li><li>${icon('body')}Mark where you feel pain or tension</li><li>${icon('wind')}${TOOLS.length} breathing, grounding, touch and movement tools</li><li>${icon('chart')}See your patterns and what calms you most</li></ul>`,
     () => `<h1>The scale</h1><p class="lead">How activated, revved up or on alert your body feels right now.</p>
       <div class="ob-scale" aria-hidden="true">${Array.from({ length: 11 }, (_, i) => `<span style="background:var(--a${i})">${i}</span>`).join('')}</div>
       <ul class="plain ob-levels"><li>${lvl(0)}<span><b>Deeply calm.</b> Heavy, loose, at ease.</span></li><li>${lvl(5)}<span><b>Activated.</b> Noticeably tense or restless, harder to focus.</span></li><li>${lvl(10)}<span><b>Maxed out.</b> Panic or complete overwhelm.</span></li></ul>
       <p class="muted">There’s no right number. Feeling numb, foggy or shut down? Rate your activation and pick those feelings too.</p>`,
-    () => `<h1>Pick a few favourites</h1><p class="lead">They’ll be on your Today screen, ready to start. You can change them any time.</p>
+    () => `<div class="ob-vigs" aria-hidden="true">${CATS.map(c => ART.vig(c.id)).join('')}</div><h1>Pick a few favourites</h1><p class="lead">They’ll be on your Today screen, ready to start. You can change them any time.</p>
       <div class="chips">${STARTERS.map(id => `<button type="button" class="chip${picks.has(id) ? ' on' : ''}" data-ob="pick" data-id="${id}" aria-pressed="${picks.has(id)}">${esc(toolName(id))}</button>`).join('')}</div>
       <p class="muted">${icon('shield', 'sm')}Everything you enter stays on this phone. Nothing is sent anywhere.</p>`,
   ];

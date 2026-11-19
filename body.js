@@ -56,7 +56,7 @@ function bodySvg(view, { fill = () => null, sel = null, cls = '', title } = {}) 
     return `<path d="${d}" data-r="${id}" class="rg${f ? ' on' : ''}${sel === id ? ' sel' : ''}"${f ? ` style="fill:${f}"` : ''}><title>${esc(regionName(id))}</title></path>`;
   }).join('');
   const ring = sel && regs.find(r => r[0] === sel) ? `<path class="ring" d="${regs.find(r => r[0] === sel)[1]}"/>` : '';
-  return `<figure class="fig ${cls}"><svg viewBox="22 4 156 452" aria-hidden="true" focusable="false">${paths}${ring}
+  return `<figure class="fig ${cls}"><svg viewBox="22 4 156 458" aria-hidden="true" focusable="false"><ellipse class="fig-shadow" cx="100" cy="456" rx="46" ry="4.5"/>${paths}${ring}
     <text x="27" y="122" class="side">${front ? 'R' : 'L'}</text><text x="173" y="122" class="side" text-anchor="end">${front ? 'L' : 'R'}</text></svg>
     <figcaption>${title || (front ? 'Front' : 'Back')}</figcaption></figure>`;
 }

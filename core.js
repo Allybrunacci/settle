@@ -1,7 +1,7 @@
 /* Settle — core: helpers, dates, the activation scale, saved data, router, sheets, toasts, sound, wake lock */
 'use strict';
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const STORE_KEY = 'settle:v1';
 
 /* ---------- helpers ---------- */
@@ -94,8 +94,8 @@ const lvlWord = n => LEVELS[clamp(Math.round(n), 0, 10)][0];
 const lvl = (n, word) => `<span class="lvl" style="--c:var(--a${clamp(Math.round(n), 0, 10)})"><b>${n}</b>${word ? `<span>${lvlWord(n)}</span>` : ''}</span>`;
 const lvlArrow = (a, b) => `<span class="pair">${lvl(a)}<span class="arrow" aria-label="to">${icon('arrow-r', 'sm')}</span>${lvl(b)}</span>`;
 
-// Heat colours for the body map: pale yellow (mild) to deep red (severe). t is 0..1.
-const HEAT = [[255, 224, 138], [253, 184, 99], [244, 135, 75], [220, 78, 62], [163, 32, 58]];
+// Heat colours for the body map: honey (mild) through terracotta to oxblood (severe). t is 0..1.
+const HEAT = [[242, 214, 138], [236, 178, 103], [219, 128, 82], [183, 82, 62], [128, 46, 48]];
 function heat(t) {
   t = clamp(t, 0, 1) * (HEAT.length - 1);
   const i = Math.min(HEAT.length - 2, Math.floor(t)), f = t - i;
@@ -552,4 +552,7 @@ function onViewClick(e) {
   if (fn) { e.preventDefault(); fn(a, e); }
 }
 const backBtn = (hash, label = 'Back') => `<a class="back" href="${hash}">${icon('chev-l')}<span>${label}</span></a>`;
-const empty = (ic, title, body, action) => `<div class="empty">${icon(ic, 'lg')}<h3>${title}</h3><p>${body}</p>${action || ''}</div>`;
+// Empty states get a small illustration (a seedling, a cairn, a fern or a moon) instead of an icon.
+const EMPTY_ART = { clock: 'sprout', chart: 'fern', body: 'cairn', search: 'fern', wind: 'sprout', check: 'cairn', alert: 'moon' };
+const empty = (ic, title, body, action) => `<div class="empty">${typeof ART !== 'undefined' ? ART.empty(EMPTY_ART[ic] || 'sprout') : icon(ic, 'lg')}<h3>${title}</h3><p>${body}</p>${action || ''}</div>`;
+const pageHead = (title, sub, opts = {}) => `<header class="page-head">${opts.eyebrow ? `<p class="eyebrow">${opts.eyebrow}</p>` : ''}<h1>${title}</h1>${sub ? `<p class="sub">${sub}</p>` : ''}${typeof ART !== 'undefined' ? ART.sprig(opts.flip) : ''}</header>`;
