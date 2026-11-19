@@ -1,7 +1,7 @@
 /* Settle — core: helpers, dates, the activation scale, saved data, router, sheets, toasts, sound, wake lock */
 'use strict';
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const STORE_KEY = 'settle:v1';
 
 /* ---------- helpers ---------- */
@@ -10,6 +10,8 @@ const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+const dict = () => Object.create(null);
 const sum = a => a.reduce((t, n) => t + n, 0);
 const avg = a => (a.length ? sum(a) / a.length : null);
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many || one + 's'}`;
@@ -105,14 +107,30 @@ function heat(t) {
 const heatN = n => heat((clamp(n, 1, 10) - 1) / 9);
 
 /* ---------- saved data ---------- */
+const QUAL_IDS = ['tight', 'pain', 'ache', 'buzz', 'tingle', 'heavy', 'numb', 'flutter', 'warm', 'cold'];
+// The old pain/tension kind, still used by filters: both, pain, or tension (anything else counts with tension).
+const kindOfQ = q => (q.includes('pain') && q.includes('tight') ? 'b' : q.includes('pain') ? 'p' : 't');
+const BG_KINDS = ['off', 'rain', 'ocean', 'forest', 'stream', 'night', 'noise'];
+const PLACES = ['meadow', 'forest', 'beach', 'mountains', 'outback'];
+const SEASONS = ['auto', 'spring', 'summer', 'autumn', 'winter'];
+const defaults = name => (typeof DEFAULTS !== 'undefined' ? JSON.parse(JSON.stringify(DEFAULTS[name])) : []);
+const freshPlan = () => ({ signs: '', helps: '', places: '', people: [], pros: defaults('pros'), safe: '', reasons: '', updated: 0 });
+const freshWords = () => ({ calm: { feel: '', helps: '' }, act: { feel: '', helps: '' }, shut: { feel: '', helps: '' } });
 function freshState() {
   return {
-    v: 1, created: todayKey(), onboarded: false,
-    prefs: { sound: true, silent: false, haptics: true, volume: 0.7, theme: 'auto', voice: false, bg: 'off', remind: ['10:00', '14:00', '19:00'] },
+    v: 2, created: todayKey(), onboarded: false,
+    prefs: { sound: true, silent: false, haptics: true, volume: 0.7, theme: 'auto', voice: false, bg: 'off', scape: 'forest', place: 'meadow', season: 'auto', remind: ['10:00', '14:00', '19:00'] },
     favs: [],
     toolPrefs: {},
     entries: [],
     customTags: [],
+    triggers: defaults('triggers'),
+    glimmers: [],
+    sleep: {},
+    routines: defaults('routines'),
+    custom: [],
+    plan: freshPlan(),
+    words: freshWords(),
     active: null,
     pending: null,
     hide: {},
@@ -126,27 +144,32 @@ const lvlOrNull = x => (x === null || x === undefined || x === '' || !isFinite(+
 function cleanBody(b) {
   const out = {};
   for (const [k, v] of Object.entries(obj(b))) {
-    if (!/^[a-zA-Z]{2,20}$/.test(k) || !v || typeof v !== 'object') continue;
+    if (!/^[a-zA-Z]{2,20}$/.test(k) || (typeof REGIONS !== 'undefined' && !own(REGIONS, k)) || !v || typeof v !== 'object') continue;
     const n = clamp(Math.round(+v.n || 0), 0, 10);
-    if (n > 0) out[k] = { n, k: ['t', 'p', 'b'].includes(v.k) ? v.k : 't' };
+    if (!n) continue;
+    let q = Array.from(new Set(arr(v.q).filter(x => QUAL_IDS.includes(x))));
+    if (!q.length) q = v.k === 'p' ? ['pain'] : v.k === 'b' ? ['tight', 'pain'] : ['tight'];
+    out[k] = { n, k: kindOfQ(q), q };
   }
   return out;
 }
-const ID_RE = /^[a-z0-9]{1,24}$/i, TOOL_RE = /^[a-z0-9-]{1,30}$/;
+const ID_RE = /^[a-z0-9]{1,24}$/i, TOOL_RE = /^[a-z0-9-]{1,30}$/, RID_RE = /^r-[a-z0-9-]{1,28}$/, UID_RE = /^u-[a-z0-9]{1,26}$/;
 const cleanId = x => (ID_RE.test(String(x || '')) ? String(x) : uid());
 function cleanDraft(r) {
   if (!r || typeof r !== 'object') return undefined;
-  return { rating: r.rating ? clamp(Math.round(+r.rating), 1, 5) : null, after: lvlOrNull(r.after), note: str(r.note, 2000), body: r.body ? cleanBody(r.body) : null };
+  return { rating: r.rating ? clamp(Math.round(+r.rating), 1, 5) : null, after: lvlOrNull(r.after), before: lvlOrNull(r.before), note: str(r.note, 2000), body: r.body ? cleanBody(r.body) : null };
 }
 function cleanUse(u) {
   u = obj(u);
   if (!TOOL_RE.test(String(u.tool || ''))) return null;
-  return {
+  const out = {
     id: cleanId(u.id), tool: String(u.tool), mins: clamp(+u.mins || 1, 0.25, 120), secs: clamp(Math.round(+u.secs || 0), 0, 7200),
     start: +u.start || 0, end: +u.end || 0, pattern: str(u.pattern, 20),
     before: lvlOrNull(u.before), after: lvlOrNull(u.after), rating: u.rating ? clamp(Math.round(+u.rating), 1, 5) : null,
     note: str(u.note, 2000), body: u.body ? cleanBody(u.body) : null,
   };
+  if (Array.isArray(u.parts)) out.parts = u.parts.map(String).filter(x => TOOL_RE.test(x)).slice(0, 12);
+  return out;
 }
 function cleanEntry(e) {
   e = obj(e);
@@ -158,9 +181,43 @@ function cleanEntry(e) {
     id: cleanId(e.id), at, act,
     feels: arr(e.feels).map(x => str(x, 30)).filter(Boolean).slice(0, 30),
     tags: arr(e.tags).map(x => str(x, 40)).filter(Boolean).slice(0, 30),
-    body: cleanBody(e.body), note: str(e.note, 4000), src: e.src === 'tool' ? 'tool' : 'checkin',
+    trig: arr(e.trig).map(x => str(x, 40).trim()).filter(Boolean).slice(0, 12),
+    body: cleanBody(e.body), note: str(e.note, 4000), src: ['tool', 'sos'].includes(e.src) ? e.src : 'checkin',
     uses: arr(e.uses).map(cleanUse).filter(Boolean),
   };
+}
+function cleanRoutine(r) {
+  r = obj(r);
+  if (!RID_RE.test(String(r.id || ''))) return null;
+  const steps = arr(r.steps).map(obj).filter(x => TOOL_RE.test(String(x.tool || '')) && !String(x.tool).startsWith('r-'))
+    .map(x => ({ tool: String(x.tool), mins: clamp(+x.mins || 1, 0.5, 60), pattern: str(x.pattern, 20) })).slice(0, 10);
+  if (!steps.length) return null;
+  return { id: String(r.id), name: str(r.name, 40).trim() || 'Routine', steps };
+}
+function cleanCustom(c) {
+  c = obj(c);
+  const name = str(c.name, 40).trim();
+  if (!UID_RE.test(String(c.id || '')) || !name) return null;
+  const durs = Array.from(new Set(arr(c.durs).map(Number).filter(m => m >= 0.5 && m <= 60))).sort((a, b) => a - b).slice(0, 8);
+  const cats = typeof CATS !== 'undefined' ? CATS.map(x => x.id) : [], goods = typeof GOOD !== 'undefined' ? Object.keys(GOOD) : [];
+  const d = durs.length ? durs : [5, 10, 15];
+  return { id: String(c.id), name, cat: cats.includes(c.cat) ? c.cat : 'rest', short: str(c.short, 200).trim(), steps: arr(c.steps).map(x => str(x, 300).trim()).filter(Boolean).slice(0, 12), durs: d, def: d.includes(+c.def) ? +c.def : d[0], good: arr(c.good).filter(g => goods.includes(g)) };
+}
+const cleanContacts = a => arr(a).map(obj).map(x => ({ name: str(x.name, 60).trim(), phone: str(x.phone, 30).replace(/[^\d+ ()-]/g, '').trim() })).filter(x => x.name || x.phone).slice(0, 12);
+function cleanPlan(p) {
+  if (!p || typeof p !== 'object') return freshPlan();
+  return { signs: str(p.signs, 2000), helps: str(p.helps, 2000), places: str(p.places, 2000), people: cleanContacts(p.people), pros: Array.isArray(p.pros) ? cleanContacts(p.pros) : defaults('pros'), safe: str(p.safe, 2000), reasons: str(p.reasons, 2000), updated: +p.updated || 0 };
+}
+function cleanWords(w) {
+  w = obj(w);
+  const one = x => ({ feel: str(obj(x).feel, 600), helps: str(obj(x).helps, 600) });
+  return { calm: one(w.calm), act: one(w.act), shut: one(w.shut) };
+}
+function cleanParts(p) {
+  if (!Array.isArray(p)) return undefined;
+  const out = p.map(obj).filter(x => TOOL_RE.test(String(x.tool || '')) && !String(x.tool).startsWith('r-'))
+    .map(x => ({ tool: String(x.tool), mins: isFinite(+x.mins) ? clamp(+x.mins, 0, 120) : 1, plan: clamp(+x.plan || +x.mins || 1, 0.25, 120), pattern: str(x.pattern, 20), rate: +x.rate || 0 })).slice(0, 10);
+  return out.length ? out : undefined;
 }
 function migrate(d) {
   const s = freshState();
@@ -174,22 +231,40 @@ function migrate(d) {
   s.prefs.volume = clamp(p.volume === undefined ? 0.7 : +p.volume || 0, 0, 1);
   s.prefs.theme = ['auto', 'light', 'dark'].includes(p.theme) ? p.theme : 'auto';
   s.prefs.voice = !!p.voice;
-  s.prefs.bg = ['off', 'noise', 'waves'].includes(p.bg) ? p.bg : 'off';
+  s.prefs.bg = p.bg === 'waves' ? 'ocean' : BG_KINDS.includes(p.bg) ? p.bg : 'off';
+  s.prefs.scape = BG_KINDS.includes(p.scape) && p.scape !== 'off' ? p.scape : 'forest';
+  s.prefs.place = PLACES.includes(p.place) ? p.place : 'meadow';
+  s.prefs.season = SEASONS.includes(p.season) ? p.season : 'auto';
   if (Array.isArray(p.remind)) s.prefs.remind = p.remind.filter(t => /^\d\d:\d\d$/.test(t)).slice(0, 8);
   s.favs = arr(d.favs).map(x => String(x || '')).filter(x => TOOL_RE.test(x));
   for (const [k, v] of Object.entries(obj(d.toolPrefs))) if (TOOL_RE.test(k)) s.toolPrefs[k] = { mins: clamp(+obj(v).mins || 0, 0, 120) || undefined, pattern: str(obj(v).pattern, 20), rate: +obj(v).rate || undefined };
   s.entries = arr(d.entries).map(cleanEntry).filter(Boolean).sort((a, b) => a.at - b.at);
   s.customTags = arr(d.customTags).map(x => str(x, 30).trim()).filter(Boolean).slice(0, 40);
+  if (Array.isArray(d.triggers)) s.triggers = Array.from(new Set(d.triggers.map(x => str(x, 40).trim()).filter(Boolean))).slice(0, 60);
+  const gk = typeof GKINDS !== 'undefined' ? GKINDS.map(g => g[0]) : [];
+  s.glimmers = arr(d.glimmers).map(obj).filter(g => +g.at).map(g => ({ id: cleanId(g.id), at: +g.at, text: str(g.text, 300), kind: gk.includes(g.kind) ? g.kind : 'moment' })).sort((a, b) => a.at - b.at);
+  for (const [k, v] of Object.entries(obj(d.sleep))) {
+    if (!isKey(k)) continue;
+    const o = obj(v), hrs = o.hrs === null || o.hrs === undefined || o.hrs === '' || !isFinite(+o.hrs) ? null : clamp(Math.round(+o.hrs * 2) / 2, 0, 16);
+    s.sleep[k] = { hrs, q: o.q ? clamp(Math.round(+o.q), 1, 5) : null, energy: o.energy ? clamp(Math.round(+o.energy), 1, 5) : null, at: +o.at || 0 };
+  }
+  if (Array.isArray(d.routines)) s.routines = d.routines.map(cleanRoutine).filter(Boolean).slice(0, 30);
+  if (!s.routines.some(r => r.id === 'r-sos')) { const sos = defaults('routines').find(r => r.id === 'r-sos'); if (sos) s.routines.unshift(sos); }
+  s.custom = arr(d.custom).map(cleanCustom).filter(Boolean).slice(0, 60);
+  s.plan = cleanPlan(d.plan);
+  s.words = cleanWords(d.words);
   const a = obj(d.active);
   if (ID_RE.test(String(a.entryId || '')) && TOOL_RE.test(String(a.tool || '')) && +a.start) {
-    s.active = { entryId: String(a.entryId), tool: String(a.tool), mins: clamp(+a.mins || 1, 0.25, 120), plan: clamp(+a.plan || +a.mins || 1, 0.25, 120), pattern: str(a.pattern, 20), rate: +a.rate || 0, before: lvlOrNull(a.before), start: +a.start, paused: +a.paused || null, pausedMs: +a.pausedMs || 0, done: !!a.done, end: +a.end || null, skip: +a.skip || 0, useId: cleanId(a.useId) };
+    s.active = { entryId: String(a.entryId), tool: String(a.tool), mins: clamp(+a.mins || 1, 0.25, 120), plan: clamp(+a.plan || +a.mins || 1, 0.25, 120), pattern: str(a.pattern, 20), rate: +a.rate || 0, before: lvlOrNull(a.before), start: +a.start, paused: +a.paused || null, pausedMs: +a.pausedMs || 0, done: !!a.done, end: +a.end || null, skip: +a.skip || 0, skipPart: +a.skipPart || 0, useId: cleanId(a.useId), sos: !!a.sos };
+    const parts = cleanParts(a.parts);
+    if (parts) { s.active.parts = parts; s.active.mins = Math.max(0.05, sum(parts.map(x => x.mins))); }
     const dr = cleanDraft(a.draft);
     if (dr) s.active.draft = dr;
   }
   const pe = obj(d.pending);
   if (ID_RE.test(String(pe.entryId || '')) && +pe.at) s.pending = { entryId: String(pe.entryId), at: +pe.at };
   const h = obj(d.hide);
-  s.hide = { install: !!h.install, lastBackup: +h.lastBackup || 0 };
+  s.hide = { install: !!h.install, lastBackup: +h.lastBackup || 0, backupSnooze: +h.backupSnooze || 0, week: isKey(h.week) ? h.week : '', sleepSkip: isKey(h.sleepSkip) ? h.sleepSkip : '' };
   s.savedAt = +d.savedAt || 0;
   return s;
 }
@@ -421,42 +496,120 @@ function cue(kind) {
   else if (kind === 'hold' || kind === 'rest') tone(523, 0.5, { gain: 0.05, attack: 0.05 });
 }
 const tick = side => tone(side ? 660 : 550, 0.18, { gain: 0.14, attack: 0.008, pan: side ? 0.85 : -0.85 });
-// Background sound: soft brown noise, steady or rising and falling like waves.
+
+/* ---------- nature soundscapes, made in the app so they work offline ---------- */
+const BG_NAMES = { off: 'Off', rain: 'Rain', ocean: 'Ocean waves', forest: 'Forest', stream: 'Stream', night: 'Night crickets', noise: 'Soft noise' };
+const NOISE = {};
+function noiseBuf(c, type) {
+  const key = type + c.sampleRate;
+  if (NOISE[key]) return NOISE[key];
+  const len = c.sampleRate * 6, buf = c.createBuffer(2, len, c.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    if (type === 'white') { for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1; continue; }
+    let last = 0;
+    for (let i = 0; i < len; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = last * 3.2; }
+    const a = d[0], b = d[len - 1];
+    for (let i = 0; i < len; i++) d[i] -= (b - a) * (i / (len - 1));
+  }
+  return (NOISE[key] = buf);
+}
+const panTo = (c, node, p) => { if (!c.createStereoPanner) return node; const sp = c.createStereoPanner(); sp.pan.value = p; node.connect(sp); return sp; };
+// A looping noise bed through filters into the soundscape.
+function bed(c, out, type, filters, gain) {
+  const src = c.createBufferSource();
+  src.buffer = noiseBuf(c, type);
+  src.loop = true;
+  let node = src;
+  for (const [ft, f, q] of filters) { const bq = c.createBiquadFilter(); bq.type = ft; bq.frequency.value = f; if (q) bq.Q.value = q; node.connect(bq); node = bq; }
+  const g = c.createGain();
+  g.gain.value = gain;
+  node.connect(g);
+  g.connect(out);
+  src.start(0, Math.random() * 5);
+  return { src, g, filt: node };
+}
+function lfo(c, param, rate, depth) { const o = c.createOscillator(), d = c.createGain(); o.frequency.value = rate; d.gain.value = depth; o.connect(d); d.connect(param); o.start(); return o; }
+const env = (g, t, peak, attack, len) => { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + len); };
+const rnd = (a, b) => a + Math.random() * (b - a);
+function rainDrop(c, out, t) {
+  const s = c.createBufferSource(), bp = c.createBiquadFilter(), g = c.createGain();
+  s.buffer = noiseBuf(c, 'white');
+  bp.type = 'bandpass'; bp.frequency.value = rnd(1800, 6000); bp.Q.value = rnd(4, 12);
+  env(g, t, rnd(0.03, 0.12), 0.004, rnd(0.03, 0.08));
+  s.connect(bp); bp.connect(g); panTo(c, g, rnd(-0.8, 0.8)).connect(out);
+  s.start(t, rnd(0, 5), 0.1);
+}
+function birdSong(c, out, t) {
+  const n = Math.floor(rnd(2, 7)), base = rnd(2300, 3900), p = rnd(-0.7, 0.7), down = Math.random() < 0.5;
+  let at = t;
+  for (let i = 0; i < n; i++) {
+    const o = c.createOscillator(), g = c.createGain(), d = rnd(0.05, 0.13), f = base * rnd(0.92, 1.12);
+    o.frequency.setValueAtTime(f, at);
+    o.frequency.exponentialRampToValueAtTime(f * (down ? rnd(0.7, 0.85) : rnd(1.15, 1.4)), at + d);
+    env(g, at, rnd(0.016, 0.036), 0.012, d);
+    o.connect(g); panTo(c, g, p).connect(out);
+    o.start(at); o.stop(at + d + 0.02);
+    at += d + rnd(0.03, 0.1);
+  }
+  return at;
+}
+function bubble(c, out, t) {
+  const o = c.createOscillator(), g = c.createGain(), d = rnd(0.03, 0.07), f = rnd(380, 1100);
+  o.frequency.setValueAtTime(f, t);
+  o.frequency.exponentialRampToValueAtTime(f * rnd(1.4, 1.9), t + d);
+  env(g, t, rnd(0.006, 0.02), 0.008, d);
+  o.connect(g); panTo(c, g, rnd(-0.6, 0.6)).connect(out);
+  o.start(t); o.stop(t + d + 0.02);
+}
+function chirp(c, out, t, f, p) {
+  for (let k = 0; k < 3; k++) {
+    const at = t + k * 0.045, o = c.createOscillator(), g = c.createGain();
+    o.frequency.value = f;
+    env(g, at, 0.011, 0.006, 0.03);
+    o.connect(g); panTo(c, g, p).connect(out);
+    o.start(at); o.stop(at + 0.04);
+  }
+}
 function startBg(kind) {
   stopBg();
-  if (kind === 'off') return;
+  if (!kind || kind === 'off' || !BG_NAMES[kind]) return;
   const c = audio();
   if (!c) return;
   try {
-    const secs = 8, len = c.sampleRate * secs, buf = c.createBuffer(2, len, c.sampleRate);
-    for (let ch = 0; ch < 2; ch++) {
-      const d = buf.getChannelData(ch);
-      let last = 0;
-      for (let i = 0; i < len; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = last * 3.2; }
-      const a = d[0], b = d[len - 1];
-      for (let i = 0; i < len; i++) d[i] -= (b - a) * (i / (len - 1));
+    const out = c.createGain();
+    out.gain.value = 0.0001;
+    out.connect(SND.master);
+    out.gain.exponentialRampToValueAtTime(1, c.currentTime + 2.5);
+    const nodes = [], oscs = [], next = {};
+    if (kind === 'noise') nodes.push(bed(c, out, 'brown', [['lowpass', 900]], 0.28));
+    if (kind === 'ocean') {
+      const swell = bed(c, out, 'brown', [['lowpass', 650]], 0.2), foam = bed(c, out, 'white', [['highpass', 900], ['lowpass', 2800]], 0.025);
+      oscs.push(lfo(c, swell.g.gain, 0.08, 0.16), lfo(c, foam.g.gain, 0.08, 0.022));
+      nodes.push(swell, foam);
     }
-    const src = c.createBufferSource();
-    src.buffer = buf;
-    src.loop = true;
-    const lp = c.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = kind === 'waves' ? 700 : 900;
-    const g = c.createGain();
-    g.gain.value = 0.0001;
-    g.gain.exponentialRampToValueAtTime(kind === 'waves' ? 0.22 : 0.28, c.currentTime + 2);
-    src.connect(lp); lp.connect(g); g.connect(SND.master);
-    let lfo = null;
-    if (kind === 'waves') {
-      lfo = c.createOscillator();
-      const depth = c.createGain();
-      lfo.frequency.value = 0.08;
-      depth.gain.value = 0.16;
-      lfo.connect(depth); depth.connect(g.gain);
-      lfo.start();
+    if (kind === 'rain') { nodes.push(bed(c, out, 'white', [['highpass', 500], ['lowpass', 6500]], 0.07), bed(c, out, 'brown', [['lowpass', 320]], 0.12)); next.drop = 0; }
+    if (kind === 'forest') {
+      const wind = bed(c, out, 'brown', [['bandpass', 520, 0.6]], 0.2);
+      oscs.push(lfo(c, wind.filt.frequency, 0.05, 240), lfo(c, wind.g.gain, 0.03, 0.08));
+      nodes.push(wind);
+      next.bird = c.currentTime + 1.2;
     }
-    src.start();
-    SND.bg = { src, g, lfo };
+    if (kind === 'stream') { nodes.push(bed(c, out, 'white', [['bandpass', 1100, 0.5]], 0.09), bed(c, out, 'brown', [['lowpass', 500]], 0.1)); next.bubble = 0; }
+    if (kind === 'night') { nodes.push(bed(c, out, 'brown', [['lowpass', 380]], 0.09)); next.cr1 = c.currentTime + 0.4; next.cr2 = c.currentTime + 1.1; }
+    // Schedule the little sounds (drops, birds, bubbles, crickets) a moment ahead.
+    const step = () => {
+      const now = c.currentTime, ahead = now + 0.3;
+      if ('drop' in next) while (next.drop < ahead) { const t = Math.max(next.drop, now + 0.01); rainDrop(c, out, t); next.drop = t + rnd(0.02, 0.11); }
+      if ('bird' in next && next.bird < ahead) { const end = birdSong(c, out, Math.max(next.bird, now + 0.01)); next.bird = end + rnd(1.5, 6); }
+      if ('bubble' in next) while (next.bubble < ahead) { const t = Math.max(next.bubble, now + 0.01); bubble(c, out, t); next.bubble = t + rnd(0.025, 0.12); }
+      if ('cr1' in next) {
+        while (next.cr1 < ahead) { const t = Math.max(next.cr1, now + 0.01); chirp(c, out, t, 4400, -0.5); next.cr1 = t + rnd(0.55, 0.75); }
+        while (next.cr2 < ahead) { const t = Math.max(next.cr2, now + 0.01); chirp(c, out, t, 4720, 0.6); next.cr2 = t + rnd(0.8, 1.2); }
+      }
+    };
+    step();
+    SND.bg = { out, nodes, oscs, timer: setInterval(step, 120) };
     SND.bgKind = kind;
   } catch (e) { SND.bg = null; }
 }
@@ -465,13 +618,14 @@ function stopBg() {
   SND.bg = null;
   SND.bgKind = 'off';
   if (!b || !SND.ctx) return;
+  clearInterval(b.timer);
   try {
     const t = SND.ctx.currentTime;
-    b.g.gain.cancelScheduledValues(t);
-    b.g.gain.setValueAtTime(Math.max(0.0001, b.g.gain.value), t);
-    b.g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
-    b.src.stop(t + 0.7);
-    if (b.lfo) b.lfo.stop(t + 0.7);
+    b.out.gain.cancelScheduledValues(t);
+    b.out.gain.setValueAtTime(Math.max(0.0001, b.out.gain.value), t);
+    b.out.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    for (const n of b.nodes) n.src.stop(t + 0.7);
+    for (const o of b.oscs) o.stop(t + 0.7);
   } catch (e) { /* already stopped */ }
 }
 const buzz = (p = 12) => { try { if (S.prefs.haptics && navigator.vibrate) navigator.vibrate(p); } catch (e) { /* not supported */ } };

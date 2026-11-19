@@ -46,14 +46,14 @@ function importData(file) {
 }
 const csvCell = v => { const s = String(v == null ? '' : v); return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 function exportCsv() {
-  const head = ['Date', 'Time', 'Activation', 'Level', 'Feelings', 'What was going on', 'Pain and tension', 'Note', 'Tool', 'Planned minutes', 'Minutes done', 'Before', 'After', 'Change', 'How well it worked (1-5)', 'Tool note'];
+  const head = ['Date', 'Time', 'Activation', 'Level', 'Feelings', 'What was going on', 'Triggers', 'Body', 'Note', 'Tool', 'Planned minutes', 'Minutes done', 'Before', 'After', 'Change', 'How well it worked (1-5)', 'Tool note'];
   const rows = [head];
   for (const e of S.entries) {
     const d = new Date(e.at);
-    const base = [dkey(d), `${pad(d.getHours())}:${pad(d.getMinutes())}`, e.act, lvlWord(e.act), e.feels.map(feelLabel).join('; '), e.tags.map(tagLabel).join('; '),
-      bodyList(e.body).map(([id, v]) => `${regionName(id)} ${v.n} (${KINDS[v.k]})`).join('; '), e.note];
+    const base = [dkey(d), `${pad(d.getHours())}:${pad(d.getMinutes())}`, e.act, lvlWord(e.act), e.feels.map(feelLabel).join('; '), e.tags.map(tagLabel).join('; '), (e.trig || []).join('; '),
+      bodyList(e.body).map(([id, v]) => `${regionName(id)} ${v.n} (${qualText(v)})`).join('; '), e.note];
     if (!e.uses.length) rows.push(base.concat(['', '', '', '', '', '', '', '']));
-    for (const u of e.uses) rows.push(base.concat([toolName(u.tool), u.mins, Math.round(u.secs / 6) / 10, u.before ?? '', u.after ?? '', u.after !== null && u.before !== null ? u.after - u.before : '', u.rating || '', u.note]));
+    for (const u of e.uses) rows.push(base.concat([toolName(u.tool) + (u.parts && u.parts.length ? ` (${u.parts.map(toolName).join(', ')})` : ''), u.mins, Math.round(u.secs / 6) / 10, u.before ?? '', u.after ?? '', u.after !== null && u.before !== null ? u.after - u.before : '', u.rating || '', u.note]));
   }
   download(`settle-check-ins-${todayKey()}.csv`, '\ufeff' + rows.map(r => r.map(csvCell).join(',')).join('\r\n'), 'text/csv');
   toast(`${icon('check', 'sm')}Spreadsheet saved to your downloads`);
@@ -73,6 +73,16 @@ function remindersIcs() {
   return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Settle//Check-in reminders//EN', 'CALSCALE:GREGORIAN', ...ev, 'END:VCALENDAR'].join('\r\n') + '\r\n';
 }
 const fmtHM = hm => { const [h, m] = hm.split(':').map(Number); return `${h % 12 || 12}:${pad(m)} ${h < 12 ? 'am' : 'pm'}`; };
+const PLACE_NAMES = { meadow: 'Meadow', forest: 'Forest', beach: 'Beach', mountains: 'Mountains', outback: 'Outback' };
+// A few seconds of a background sound when you choose it (not while a session is playing).
+let PREVIEW = 0;
+function previewBg(kind) {
+  clearTimeout(PREVIEW);
+  if (S.active && !S.active.done && !S.active.paused) return;
+  if (kind === 'off' || !S.prefs.sound) { stopBg(); return; }
+  startBg(kind);
+  PREVIEW = setTimeout(stopBg, 6000);
+}
 
 /* ---------- settings ---------- */
 function openSettings() {
@@ -81,17 +91,21 @@ function openSettings() {
       ${switchRow('sound', 'Sounds', 'Soft breathing cues, step chimes and an end bell', S.prefs.sound)}
       ${IOS ? switchRow('silent', 'Play when iPhone is on Silent', 'Sounds play even with the Silent switch on. This pauses music from other apps.', S.prefs.silent) : ''}
       <div class="set-row"><span><b>Volume</b></span><input type="range" name="volume" min="0" max="1" step="0.1" value="${S.prefs.volume}" aria-label="Volume"></div>
-      <div class="set-row"><span><b>Background sound</b><small>Plays during sessions</small></span><div class="seg" role="radiogroup" aria-label="Background sound">${[['off', 'Off'], ['noise', 'Soft noise'], ['waves', 'Waves']].map(([id, n]) => `<button type="button" role="radio" aria-checked="${S.prefs.bg === id}" class="${S.prefs.bg === id ? 'on' : ''}" data-act="bg" data-id="${id}">${n}</button>`).join('')}</div></div>
+      <div class="set-row col"><span><b>Background sound</b><small>Plays during sessions. Tap one to hear it.</small></span><div class="chips" role="radiogroup" aria-label="Background sound">${BG_KINDS.map(id => `<button type="button" role="radio" aria-checked="${S.prefs.bg === id}" class="chip${S.prefs.bg === id ? ' on' : ''}" data-act="bg" data-id="${id}">${BG_NAMES[id]}</button>`).join('')}</div></div>
       ${'speechSynthesis' in window ? switchRow('voice', 'Read steps aloud', 'Your phone’s voice reads each step, so you can close your eyes', S.prefs.voice) : ''}
       ${'vibrate' in navigator ? switchRow('haptics', 'Vibration', 'Gentle buzzes for breathing and taps', S.prefs.haptics) : ''}
       <button type="button" class="btn small outline" data-act="test">${icon('volume')}Test sound</button></section>
-    <section class="set"><h3>Appearance</h3><div class="seg wide" role="radiogroup" aria-label="Theme">${[['auto', 'Match phone'], ['light', 'Light'], ['dark', 'Dark']].map(([id, n]) => `<button type="button" role="radio" aria-checked="${S.prefs.theme === id}" class="${S.prefs.theme === id ? 'on' : ''}" data-act="theme" data-id="${id}">${n}</button>`).join('')}</div></section>
+    <section class="set"><h3>Appearance</h3><div class="seg wide" role="radiogroup" aria-label="Theme">${[['auto', 'Match phone'], ['light', 'Light'], ['dark', 'Dark']].map(([id, n]) => `<button type="button" role="radio" aria-checked="${S.prefs.theme === id}" class="${S.prefs.theme === id ? 'on' : ''}" data-act="theme" data-id="${id}">${n}</button>`).join('')}</div>
+      <p class="label">Your scene</p><div class="scape-pick" role="radiogroup" aria-label="Your scene">${PLACES.map(p => `<button type="button" role="radio" aria-checked="${S.prefs.place === p}" class="${S.prefs.place === p ? 'on' : ''}" data-act="place" data-id="${p}">${ART.scape(null, { place: p })}<span>${PLACE_NAMES[p]}</span></button>`).join('')}</div>
+      <p class="label">Season</p><div class="chips" role="radiogroup" aria-label="Season">${SEASONS.map(id => `<button type="button" role="radio" aria-checked="${S.prefs.season === id}" class="chip${S.prefs.season === id ? ' on' : ''}" data-act="season" data-id="${id}">${id === 'auto' ? 'Auto' : id[0].toUpperCase() + id.slice(1)}</button>`).join('')}</div>
+      <p class="hint">Auto follows the seasons where you are (southern hemisphere).</p></section>
     <section class="set"><h3>Check-in reminders</h3><p class="muted">Add daily reminders to your phone’s calendar. Web apps can’t send their own reminders, so your calendar does it.</p>
       <ul class="times">${S.prefs.remind.map((t, i) => `<li><span class="num">${fmtHM(t)}</span><button type="button" class="icon-btn small" data-act="deltime" data-i="${i}" aria-label="Remove ${fmtHM(t)}">${icon('close')}</button></li>`).join('') || '<li class="muted">No times yet.</li>'}</ul>
       <div class="add-row"><label class="sr" for="rm-time">Add a time</label><input id="rm-time" type="time" value="12:00"><button type="button" class="btn small outline" data-act="addtime">${icon('plus')}Add time</button></div>
       <button type="button" class="btn outline wide" data-act="ics" ${S.prefs.remind.length ? '' : 'disabled'}>${icon('cal')}Add reminders to my calendar</button></section>
     <section class="set"><h3>Your data</h3><p class="muted">${icon('shield', 'sm')}Everything stays on this phone. Nothing is sent anywhere. Back up now and then, so you don’t lose it if you change phones or clear your browser.${S.hide.lastBackup ? ` Last backup: ${fmtDay(dayOf(S.hide.lastBackup))}.` : ''}</p>
-      <div class="stack"><button type="button" class="btn outline wide" data-act="backup">${icon('download')}Back up (save a file)</button>
+      <div class="stack"><button type="button" class="btn primary wide" data-act="share">${icon('share')}Back up to Files or iCloud</button>
+      <button type="button" class="btn outline wide" data-act="backup">${icon('download')}Download a backup file</button>
       <label class="btn outline wide file">${icon('upload')}Restore a backup<input type="file" accept="application/json,.json" data-file="restore"></label>
       <button type="button" class="btn outline wide" data-act="csv">${icon('list')}Export check-ins as a spreadsheet</button>
       <button type="button" class="btn ghost wide danger-text" data-act="wipe">${icon('trash')}Delete everything</button></div></section>
@@ -103,6 +117,7 @@ function openSettings() {
       <button type="button" class="btn small ghost" data-act="intro">Show the welcome again</button></section>`;
   const sh = openSheet(html(), {
     cls: 'tall', label: 'Settings',
+    onClose: () => { clearTimeout(PREVIEW); if (UI.cur !== 'session') stopBg(); },
     change: (e, s) => {
       const el = e.target;
       if (el.dataset.file === 'restore') { if (el.files[0]) { s.close(); importData(el.files[0]); } return; }
@@ -110,7 +125,10 @@ function openSettings() {
       if (el.name === 'volume') { S.prefs.volume = +el.value; save(); if (SND.master) SND.master.gain.value = 0.15 + 0.85 * S.prefs.volume; }
     },
     act: {
-      bg: a => { S.prefs.bg = a.dataset.id; save(); sh.set(html()); },
+      bg: a => { S.prefs.bg = a.dataset.id; save(); sh.set(html()); previewBg(S.prefs.bg); },
+      place: a => { S.prefs.place = a.dataset.id; save(); sh.set(html()); if (UI.cur === 'today') render(); },
+      season: a => { S.prefs.season = a.dataset.id; save(); sh.set(html()); if (UI.cur === 'today') render(); },
+      share: async () => { await shareBackup(); if (!sh.closed) sh.set(html()); },
       theme: a => { S.prefs.theme = a.dataset.id; save(); applyTheme(); sh.set(html()); },
       test: () => { if (!S.prefs.sound) { toast('Sounds are off. Turn them on first.'); return; } bell(0); cue('in'); },
       addtime: () => { const v = $('#rm-time', sh.el).value; if (/^\d\d:\d\d$/.test(v) && !S.prefs.remind.includes(v)) { S.prefs.remind.push(v); S.prefs.remind.sort(); save(); sh.set(html()); } },
@@ -134,7 +152,7 @@ function startOnboarding() {
   const steps = [
     () => `<div class="ob-art">${ART.scape()}</div>
       <h1>Welcome to Settle</h1><p class="lead">Notice how activated your nervous system is, try body-based tools to settle it, and learn what works for you.</p>
-      <ul class="plain ob-list"><li>${icon('plus')}Check in any time with a quick 0 to 10 rating</li><li>${icon('body')}Mark where you feel pain or tension</li><li>${icon('wind')}${TOOLS.length} breathing, grounding, touch and movement tools</li><li>${icon('chart')}See your patterns and what calms you most</li></ul>`,
+      <ul class="plain ob-list"><li>${icon('plus')}Check in any time with a quick 0 to 10 rating</li><li>${icon('body')}Mark where you feel pain, tension and other sensations</li><li>${icon('wind')}${TOOLS.length} breathing, grounding, touch and movement tools</li><li>${icon('chart')}See your patterns and what calms you most</li></ul>`,
     () => `<h1>The scale</h1><p class="lead">How activated, revved up or on alert your body feels right now.</p>
       <div class="ob-scale" aria-hidden="true">${Array.from({ length: 11 }, (_, i) => `<span style="background:var(--a${i})">${i}</span>`).join('')}</div>
       <ul class="plain ob-levels"><li>${lvl(0)}<span><b>Deeply calm.</b> Heavy, loose, at ease.</span></li><li>${lvl(5)}<span><b>Activated.</b> Noticeably tense or restless, harder to focus.</span></li><li>${lvl(10)}<span><b>Maxed out.</b> Panic or complete overwhelm.</span></li></ul>

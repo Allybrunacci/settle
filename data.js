@@ -9,7 +9,7 @@ const CATS = [
   { id: 'vagus', name: 'Voice, face and cold', icon: 'wave' },
   { id: 'rest', name: 'Rest and imagery', icon: 'moon' },
 ];
-const catById = id => CATS.find(c => c.id === id) || CATS[0];
+const catById = id => CATS.find(c => c.id === id) || (id === 'routine' ? { id: 'routine', name: 'Routine', icon: 'leaf' } : CATS[0]);
 const GOOD = {
   quick: 'Quick', discreet: 'Discreet', high: 'Very activated', anxious: 'Anxious', anger: 'Angry',
   shutdown: 'Numb or shut down', low: 'Low or sad', tension: 'Pain or tension', sleep: 'Sleep',
@@ -338,13 +338,58 @@ const TOOLS = [
     steps: ['Lie down under a heavy blanket, or rest a pillow or folded blanket on your belly or lap.', 'Let the surface beneath you take all your weight.', 'With each out-breath, let yourself sink a little more.', 'Notice the weight on top of you and the support below.', 'Let your mind drift. There’s nothing to do right now.'],
     why: 'Gentle pressure on the body, like a weighted blanket, calms the nervous system, and lying fully supported lets your muscles stop holding you up. Many people find it helps them drop into rest or sleep.',
     guide: { t: 'steps', w: [15, 15, 25, 20, 25], stretch: true } },
+  { id: 'sounds', name: 'Nature sounds', cat: 'rest', durs: [3, 5, 10, 15, 20, 30], def: 10, good: ['sleep', 'anxious', 'high'],
+    short: 'Rest and listen to rain, ocean waves, a forest, a stream or crickets at night.',
+    steps: ['Get comfortable and pick a sound you like.', 'Let your eyes close, or rest them on the picture.', 'Let your breathing slow down and follow the sound.', 'When your mind wanders, come back to listening.'],
+    why: 'Natural sounds like rain, waves and birdsong are linked to lower stress and a shift towards rest. Listening gives your attention somewhere gentle to settle. The sounds are made by the app, so they work offline.',
+    guide: { t: 'scape' } },
 ];
-const toolById = id => TOOLS.find(t => t.id === id) || null;
-const toolName = id => { const t = toolById(id); return t ? t.name : 'A tool'; };
+const toolById = id => TOOL_MAP[id] || otherTool(id);
+const toolName = id => { const t = toolById(id); return t ? t.name : String(id).startsWith('r-') ? 'A deleted routine' : String(id).startsWith('u-') ? 'A deleted tool' : 'A tool'; };
+const TOOL_MAP = Object.create(null);
+TOOLS.forEach(t => { TOOL_MAP[t.id] = t; });
+// Your own tools (u-…) work like built-in ones: their steps are paced across the time you choose.
+function customTool(c) {
+  const steps = c.steps.length ? c.steps : [c.short || `Take your time with ${c.name}.`];
+  return Object.assign({}, c, { steps, why: '', custom: true, guide: { t: 'steps', w: steps.map(() => 1), stretch: true } });
+}
+// A routine (r-…) is a chain of tools run one after another.
+function routineTool(r) {
+  const total = sum(r.steps.map(s => s.mins));
+  return { id: r.id, name: r.name, cat: 'routine', routine: r, short: r.steps.map(s => `${toolName(s.tool)} ${durLabel(s.mins)}`).join(' → '),
+    steps: r.steps.map(s => `${toolName(s.tool)} for ${durLabel(s.mins)}`), why: '', durs: [total], def: total, good: [], guide: { t: 'routine' } };
+}
+function otherTool(id) {
+  id = String(id || '');
+  if (id.startsWith('u-')) { const c = S.custom.find(x => x.id === id); return c ? customTool(c) : null; }
+  if (id.startsWith('r-')) { const r = S.routines.find(x => x.id === id); return r ? routineTool(r) : null; }
+  return null;
+}
+const allTools = () => TOOLS.concat(S.custom.map(customTool));
+
+const DEFAULTS = {
+  routines: [
+    { id: 'r-sos', name: 'SOS', steps: [{ tool: 'sigh', mins: 1, pattern: '' }, { tool: 'feet', mins: 1, pattern: '' }, { tool: '54321', mins: 2, pattern: '' }] },
+    { id: 'r-morning', name: 'Morning reset', steps: [{ tool: 'sigh', mins: 1, pattern: '' }, { tool: 'shake', mins: 2, pattern: '' }, { tool: 'orient', mins: 2, pattern: '' }] },
+    { id: 'r-desk', name: 'Desk reset', steps: [{ tool: 'jaw', mins: 1, pattern: '' }, { tool: 'wide', mins: 1, pattern: '' }, { tool: 'exhale', mins: 2, pattern: '' }] },
+    { id: 'r-winddown', name: 'Wind down', steps: [{ tool: 'exhale', mins: 3, pattern: '' }, { tool: 'legsup', mins: 5, pattern: '' }, { tool: 'scan', mins: 10, pattern: '' }] },
+  ],
+  triggers: ['Conflict', 'Deadline', 'Running late', 'Crowds', 'Loud noise', 'Bad news', 'Feeling judged', 'Too much to do', 'Physical pain', 'A memory', 'Tired', 'Hungry'],
+  pros: [{ name: 'Lifeline (any time)', phone: '13 11 14' }, { name: 'Beyond Blue (any time)', phone: '1300 22 4636' }, { name: 'Emergency', phone: '000' }],
+};
+
+/* ---------- body sensations and glimmers ---------- */
+const QUALS = [['tight', 'Tight'], ['pain', 'Pain'], ['ache', 'Aching'], ['buzz', 'Buzzing'], ['tingle', 'Tingling'], ['heavy', 'Heavy'], ['numb', 'Numb'], ['flutter', 'Fluttery'], ['warm', 'Warm'], ['cold', 'Cold']];
+const QUAL_LABEL = Object.fromEntries(QUALS);
+const qualText = v => (v.q || []).map(q => QUAL_LABEL[q] || q).join(', ');
+const GKINDS = [['nature', 'Nature'], ['people', 'People'], ['animals', 'Animals'], ['music', 'Music'], ['food', 'Food and drink'], ['comfort', 'Comfort'], ['beauty', 'Beauty'], ['moment', 'A small moment']];
+const GKIND_LABEL = Object.fromEntries(GKINDS);
+const SLEEP_Q = ['Terrible', 'Poor', 'OK', 'Good', 'Great'];
+const ENERGY = ['Drained', 'Low', 'OK', 'Good', 'Full of energy'];
 
 // Durations offered for a tool: its own suggestions plus the full set, so you can always pick 1, 5, 10 min etc.
 const ALL_DURS = [0.5, 1, 2, 3, 5, 10, 15, 20, 30];
-const durLabel = m => (m < 1 ? `${Math.round(m * 60)} sec` : `${m} min`);
+const durLabel = m => (m < 1 ? `${Math.round(m * 60)} sec` : Math.abs(m - Math.round(m)) < 0.01 ? `${Math.round(m)} min` : m * 2 === Math.round(m * 2) ? `${m} min` : fmtSecs(m * 60));
 
 /* ---------- feelings and what's going on ---------- */
 const FEELS = [
@@ -353,11 +398,11 @@ const FEELS = [
   { g: 'Low or shut down', items: [['numb', 'Numb'], ['foggy', 'Foggy'], ['flat', 'Flat'], ['heavy', 'Heavy'], ['exhausted', 'Exhausted'], ['disconnected', 'Disconnected'], ['frozen', 'Frozen'], ['sad', 'Sad']] },
 ];
 const FEEL_LABEL = Object.fromEntries(FEELS.flatMap(g => g.items));
-const feelLabel = id => FEEL_LABEL[id] || id;
+const feelLabel = id => (own(FEEL_LABEL, id) ? FEEL_LABEL[id] : id);
 const SHUTDOWN_FEELS = ['numb', 'foggy', 'flat', 'heavy', 'exhausted', 'disconnected', 'frozen'];
 const TAGS = [['work', 'Work'], ['family', 'Family'], ['partner', 'Partner'], ['friends', 'Friends'], ['social', 'Social'], ['health', 'Health'], ['sleep', 'Sleep'], ['food', 'Food'], ['caffeine', 'Caffeine'], ['exercise', 'Exercise'], ['money', 'Money'], ['commute', 'Commute'], ['screens', 'Screens'], ['news', 'News'], ['noise', 'Noise'], ['alone', 'Alone time']];
 const TAG_LABEL = Object.fromEntries(TAGS);
-const tagLabel = id => TAG_LABEL[id] || String(id).replace(/^c:/, '');
+const tagLabel = id => (own(TAG_LABEL, id) ? TAG_LABEL[id] : String(id).replace(/^c:/, ''));
 
 /* ---------- body areas ---------- */
 const REGIONS = {
@@ -368,8 +413,8 @@ const REGIONS = {
   calfL: 'Left lower leg', calfR: 'Right lower leg', footL: 'Left foot', footR: 'Right foot',
 };
 const REGION_SHORT = { head: 'Head', jaw: 'Jaw', headBack: 'Back of head', hipL: 'Left hip', hipR: 'Right hip' };
-const regionName = id => REGIONS[id] || id;
-const regionShort = id => REGION_SHORT[id] || REGIONS[id] || id;
+const regionName = id => (own(REGIONS, id) ? REGIONS[id] : id);
+const regionShort = id => (own(REGION_SHORT, id) ? REGION_SHORT[id] : regionName(id));
 const REGION_GROUPS = [
   ['Head and neck', ['head', 'jaw', 'headBack', 'throat', 'neck']],
   ['Torso', ['shoulderL', 'shoulderR', 'chest', 'upperBack', 'stomach', 'lowerBack', 'hipL', 'hipR']],

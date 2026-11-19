@@ -1,7 +1,7 @@
 {
   "name": "Settle",
   "short_name": "Settle",
-  "description": "Check in with your nervous system, mark pain and tension, try body-based calming tools and see what works for you.",
+  "description": "Check in with your nervous system, mark what you feel in your body, try body-based calming tools and see what works for you.",
   "id": "./",
   "start_url": "./",
   "scope": "./",
@@ -16,6 +16,7 @@
     { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
   ],
   "shortcuts": [
+    { "name": "SOS: calm me now", "short_name": "SOS", "url": "./#/sos", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
     { "name": "Check in", "short_name": "Check in", "url": "./#/checkin", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
     { "name": "Tools", "short_name": "Tools", "url": "./#/tools", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
   ]

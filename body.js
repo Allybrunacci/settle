@@ -83,8 +83,8 @@ function regionFromEvent(e, svg) {
   return best;
 }
 
-let LAST_KIND = 't';
-// The editor: tap areas on the outlines (or pick from a list), choose tension/pain/both and how strong (1–10).
+let LAST_Q = ['tight'];
+// The editor: tap areas on the outlines (or pick from a list), choose what it feels like (tight, pain, buzzing…) and how strong (1–10).
 function openBodyEditor(start, onDone, opts = {}) {
   const b = JSON.parse(JSON.stringify(start || {}));
   let sel = null, list = false;
@@ -98,36 +98,45 @@ function openBodyEditor(start, onDone, opts = {}) {
     if (!sel) {
       const l = bodyList(b);
       return `<div class="bpanel">${l.length
-        ? `<p class="label">Marked</p><div class="chips">${l.map(([id, v]) => `<button type="button" class="chip on" data-act="pick" data-r="${id}">${esc(regionShort(id))} <b>${v.n}</b> <small>${KINDS[v.k]}</small></button>`).join('')}</div>`
-        : '<p class="hint">Tap the body where you feel pain or tension. You can mark as many areas as you like.</p>'}
+        ? `<p class="label">Marked</p><div class="chips">${l.map(([id, v]) => `<button type="button" class="chip on" data-act="pick" data-r="${id}">${esc(regionShort(id))} <b>${v.n}</b> <small>${esc(qualText(v))}</small></button>`).join('')}</div>`
+        : '<p class="hint">Tap the body where you feel something: pain, tension, buzzing, heaviness, numbness… You can mark as many areas as you like.</p>'}
         <button type="button" class="btn small ghost" data-act="list">${icon('list')}Choose from a list instead</button></div>`;
     }
     return `<div class="bpanel">${strength()}</div>`;
   };
   const strength = () => {
     const cur = b[sel];
-    const k = cur ? cur.k : LAST_KIND;
+    const q = cur ? cur.q : LAST_Q;
     return `<div class="strength" aria-label="${esc(regionName(sel))}">
       <div class="row-between"><h3>${esc(regionName(sel))}</h3>${cur ? `<button type="button" class="btn small ghost" data-act="clear">${icon('trash')}Remove</button>` : ''}</div>
-      <div class="seg" role="radiogroup" aria-label="What is it?">${Object.entries(KINDS).map(([id, name]) => `<button type="button" role="radio" aria-checked="${k === id}" class="${k === id ? 'on' : ''}" data-act="kind" data-k="${id}">${name}</button>`).join('')}</div>
-      <p class="label">How strong? <span class="muted">1 is barely there, 10 is the worst imaginable</span></p>
+      <p class="label">What does it feel like? <span class="muted">Choose any</span></p>
+      <div class="chips quals" role="group" aria-label="What does it feel like">${QUALS.map(([id, name]) => `<button type="button" class="chip${q.includes(id) ? ' on' : ''}" aria-pressed="${q.includes(id)}" data-act="qual" data-q="${id}">${name}</button>`).join('')}</div>
+      <p class="label">How strong? <span class="muted">1 is barely there, 10 is the strongest imaginable</span></p>
       <div class="nums" role="radiogroup" aria-label="How strong">${Array.from({ length: 10 }, (_, i) => i + 1).map(n => `<button type="button" role="radio" aria-checked="${cur && cur.n === n}" class="nb${cur && cur.n === n ? ' on' : ''}" style="--h:${heatN(n)}" data-act="n" data-n="${n}">${n}</button>`).join('')}</div>
     </div>`;
   };
-  const html = () => `${sheetHead('Pain and tension', 'Where do you feel it right now?')}
+  const html = () => `${sheetHead(opts.title || 'Body sensations', 'Where do you feel it right now?')}
     ${list ? '' : `<div class="figs edit" data-figs>${bodySvg('front', { fill, sel })}${bodySvg('back', { fill, sel })}</div>${heatLegend()}`}
     ${panel()}
     <div class="sheet-foot"><button type="button" class="btn primary wide" data-act="done">${icon('check')}Done</button></div>`;
   // However the editor is closed (Done, the close button, Escape or tapping outside), the marks are kept.
   const sh = openSheet(html(), {
-    cls: 'tall body-sheet', label: 'Pain and tension',
+    cls: 'tall body-sheet', label: 'Body sensations',
     onClose: () => onDone(b),
     act: {
       pick: a => { sel = a.dataset.r; sh.set(html()); focusPanel(); },
       list: () => { list = true; sh.set(html()); },
       figure: () => { list = false; sh.set(html()); },
-      kind: a => { LAST_KIND = a.dataset.k; if (b[sel]) b[sel].k = a.dataset.k; sh.set(html()); },
-      n: a => { b[sel] = { n: +a.dataset.n, k: b[sel] ? b[sel].k : LAST_KIND }; buzz(8); sh.set(html()); },
+      qual: a => {
+        const id = a.dataset.q, cur = b[sel];
+        const q = (cur ? cur.q : LAST_Q).slice();
+        const next = q.includes(id) ? q.filter(x => x !== id) : q.concat(id);
+        const keep = next.length ? next : [id];
+        LAST_Q = keep;
+        if (cur) { cur.q = keep; cur.k = kindOfQ(keep); }
+        sh.set(html());
+      },
+      n: a => { const q = b[sel] ? b[sel].q : LAST_Q.slice(); b[sel] = { n: +a.dataset.n, q, k: kindOfQ(q) }; buzz(8); sh.set(html()); },
       clear: () => { delete b[sel]; sel = null; sh.set(html()); },
       done: () => sh.close(),
     },
@@ -151,12 +160,12 @@ function openBodyEditor(start, onDone, opts = {}) {
 }
 
 /* ---------- body statistics for the Body section ---------- */
-// For check-ins in a period: how often each area was marked, how strongly, and a combined "load".
-function bodyStats(entries, kind = 'all') {
-  const out = {};
+// For check-ins in a period: how often each area was marked (with this sensation), how strongly, and a combined "load".
+function bodyStats(entries, qual = 'all') {
+  const out = dict();
   for (const e of entries) {
     for (const [id, v] of Object.entries(e.body || {})) {
-      if (kind !== 'all' && v.k !== kind && v.k !== 'b') continue;
+      if (qual !== 'all' && !(v.q || []).includes(qual)) continue;
       const r = out[id] || (out[id] = { id, count: 0, total: 0, max: 0, last: 0 });
       r.count++;
       r.total += v.n;

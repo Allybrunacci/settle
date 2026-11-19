@@ -33,12 +33,13 @@ function installCard() {
   if (INSTALL.prompt) return `<div class="note-card">${icon('phone')}<div><b>Install Settle</b><p>Open it like an app, even offline.</p><div class="btn-row"><button type="button" class="btn small primary" data-act="install">Install</button><button type="button" class="btn small ghost" data-act="hideinstall">Not now</button></div></div></div>`;
   return '';
 }
-function todayChart(list) {
+function todayChart(list, day) {
   const pts = readings(list);
   if (!pts.length) return '';
-  const d0 = fromKey(todayKey()).getTime();
+  const k = day || todayKey();
+  const d0 = fromKey(k).getTime();
   const hr = ts => (ts - d0) / 3600000;
-  const lo = Math.min(7, Math.floor(hr(pts[0].at))), hi = Math.max(lo + 6, Math.min(24, Math.ceil(Math.max(hr(Date.now()), hr(pts[pts.length - 1].at)) + 0.5)));
+  const lo = Math.min(7, Math.floor(hr(pts[0].at))), hi = Math.max(lo + 6, Math.min(24, Math.ceil(Math.max(k === todayKey() ? hr(Date.now()) : 0, hr(pts[pts.length - 1].at)) + 0.5)));
   const W = 320, H = 150, L = 26, R = 8, T = 10, B = 22;
   const x = h => L + ((h - lo) / (hi - lo)) * (W - L - R), y = v => T + (1 - v / 10) * (H - T - B);
   const ticks = [];
@@ -54,10 +55,10 @@ function todayChart(list) {
 }
 function entryCard(e, opts = {}) {
   const feels = e.feels.map(feelLabel), tags = e.tags.map(tagLabel);
-  const extra = feels.concat(tags);
+  const extra = feels.concat(tags, e.trig || []);
   return `<li><a class="entry" href="#/entry/${esc(e.id)}">
     <span class="e-time num">${fmtTime(e.at)}</span>
-    <span class="e-main">${lvl(e.act, true)}${extra.length ? `<small class="e-tags">${esc(extra.slice(0, 4).join(', '))}${extra.length > 4 ? '…' : ''}</small>` : ''}
+    <span class="e-main">${lvl(e.act, true)}${e.src === 'sos' ? ' <span class="tag sos-tag">SOS</span>' : ''}${extra.length ? `<small class="e-tags">${esc(extra.slice(0, 4).join(', '))}${extra.length > 4 ? '…' : ''}</small>` : ''}
       ${e.uses.map(u => `<span class="e-use">${ART.vig((toolById(u.tool) || {}).cat)}<span>${esc(toolName(u.tool))} · ${u.secs >= 60 ? `${Math.round(u.secs / 60)} min` : `${u.secs} sec`}</span>${u.after !== null ? lvlArrow(u.before, u.after) : '<span class="muted">not rated</span>'}${u.rating ? `<span class="muted">${RATINGS[u.rating - 1]}</span>` : ''}</span>`).join('')}
       ${Object.keys(e.body).length ? `<small class="e-body">${icon('body', 'sm')}${esc(bodySummary(e.body))}</small>` : ''}
       ${e.note && !opts.noNote ? `<small class="e-note">“${esc(e.note.length > 90 ? e.note.slice(0, 90) + '…' : e.note)}”</small>` : ''}</span>
@@ -82,22 +83,37 @@ VIEWS.today = {
       <h2>How’s your nervous system?</h2>
       ${last ? `<p class="last">Last reading ${ago(lastAt)}: ${lvl(lastLvl, true)}</p>` : '<p class="last">Check in any time: when you wake, when something happens, before bed.</p>'}
       <a class="btn primary big wide" href="#/checkin">${icon('plus')}Check in</a>
+      <button type="button" class="btn sos wide" data-act="sos">${icon('heart')}SOS · calm me now</button>
       ${recent && lastLvl >= 9 ? crisisCard() : ''}
     </div></section>
     ${installCard()}
+    ${backupCard()}
+    ${weekCard()}
+    ${sleepCard()}
     ${list.length ? `<section class="card"><div class="row-between"><h2 class="h3">Today</h2><span class="muted">${plural(list.length, 'check-in')} · average ${f1(avg(vals))} · highest ${Math.max(...vals)}</span></div>${todayChart(list)}</section>` : ''}
     ${recent && lastLvl >= 4 ? `<section><h2 class="h3">Try right now</h2><ul class="tool-list">${suggest(lastLvl, { feels: last.feels, body: last.body, n: 3 }).map(x => toolRow(x.t, st).replace('<span class="meta">', `<span class="why">${esc(x.why || '')}</span><span class="meta">`)).join('')}</ul></section>` : ''}
     <section><div class="row-between"><h2 class="h3">Favourites</h2><a class="link" href="#/tools">All tools</a></div>
-      ${favs.length ? `<div class="fav-row">${favs.map(f => `<button type="button" class="fav-chip" data-act="open" data-id="${f.id}">${ART.vig(f.cat)}<span>${esc(f.name)}</span></button>`).join('')}</div>`
+      ${favs.length ? `<div class="fav-row">${favs.map(f => `<button type="button" class="fav-chip" data-act="open" data-id="${esc(f.id)}">${ART.vig(f.cat)}<span>${esc(f.name)}</span></button>`).join('')}</div>`
         : `<p class="muted">Tap the star on any tool and it will show up here, ready to start.</p>`}</section>
+    ${glimmerCard()}
     ${best.length ? `<section class="card"><div class="row-between"><h2 class="h3">What works for you</h2><a class="link" href="#/insights">Insights</a></div>
       <ol class="best">${best.map(b => `<li><button type="button" class="linkish" data-act="open" data-id="${esc(b.id)}">${esc(toolName(b.id))}</button><span><span class="good">${f1(b.avgDrop)} calmer on average</span> <span class="muted">· ${plural(b.n, 'use')}</span></span></li>`).join('')}</ol></section>` : ''}
     <section><div class="row-between"><h2 class="h3">Today’s check-ins</h2>${S.entries.length ? '<a class="link" href="#/history">History</a>' : ''}</div>
-      ${list.length ? `<ul class="entries">${list.slice().reverse().map(e => entryCard(e)).join('')}</ul>` : '<p class="muted">Nothing yet today.</p>'}</section>`;
+      ${list.length ? `<ul class="entries">${list.slice().reverse().map(e => entryCard(e)).join('')}</ul>` : '<p class="muted">Nothing yet today.</p>'}</section>
+    ${spaceTiles()}`;
   },
   act: {
     open: a => openToolSheet(a.dataset.id),
     fav: a => favButton(a),
+    sos: () => startSos(),
+    glimmer: () => openGlimmer(),
+    editglimmer: a => openGlimmer(a.dataset.id),
+    sleep: () => openSleep(),
+    sleepskip: () => { S.hide.sleepSkip = todayKey(); save(); render(); },
+    backup: () => shareBackup(),
+    backuplater: () => { S.hide.backupSnooze = Date.now() + 7 * 864e5; save(); render(); },
+    hideweek: () => { S.hide.week = addDays(weekStart(todayKey()), -7); save(); render(); },
+    routines: () => { Object.assign(TL, { q: '', cat: 'routine', good: '' }); go('#/tools'); },
     unpend: () => { S.pending = null; save(); render(); },
     hideinstall: () => { S.hide.install = true; save(); render(); },
     install: async () => { const p = INSTALL.prompt; INSTALL.prompt = null; if (p) { p.prompt(); try { await p.userChoice; } catch (e) { /* dismissed */ } } render(); },
@@ -118,20 +134,27 @@ VIEWS.today = {
 
 /* ---------- Tools ---------- */
 const TL = { q: '', cat: 'all', good: '' };
+const routineHead = () => `<div class="row-between"><h2 class="h3 with-vig">${ART.vig('routine')}Routines</h2><button type="button" class="btn small ghost" data-act="newroutine">${icon('plus')}New</button></div><p class="hint tight">A few tools in a row, run as one session.</p>`;
+const mineHead = () => `<div class="row-between"><h2 class="h3 with-vig">${ART.vig('glimmer')}Your own tools</h2><button type="button" class="btn small ghost" data-act="newtool">${icon('plus')}Add</button></div>`;
 VIEWS.tools = {
   title: 'Tools',
   render() {
     const st = toolStats();
     const list = filterTools(TL.q, TL.cat, TL.good);
     const grouped = !TL.q && TL.cat === 'all' && !TL.good;
-    const body = !list.length
-      ? empty('search', 'No tools match', TL.cat === 'fav' && !S.favs.length ? 'You haven’t starred any tools yet. Tap the star next to a tool to add it.' : 'Try another word, or clear the filters.', '<button type="button" class="btn outline" data-act="clear">Clear filters</button>')
-      : grouped
-        ? CATS.map(c => `<section class="cat"><h2 class="h3">${ART.vig(c.id)}${c.name}</h2><ul class="tool-list">${list.filter(t => t.cat === c.id).map(t => toolRow(t, st)).join('')}</ul></section>`).join('')
-        : `<p class="muted" aria-live="polite">${plural(list.length, 'tool')}</p><ul class="tool-list">${list.map(t => toolRow(t, st)).join('')}</ul>`;
+    const mine = list.filter(t => t.custom);
+    const body = grouped
+      ? `<section class="cat">${routineHead()}<ul class="tool-list">${list.filter(t => t.routine).map(t => toolRow(t, st)).join('')}</ul></section>
+        ${CATS.map(c => `<section class="cat"><h2 class="h3">${ART.vig(c.id)}${c.name}</h2><ul class="tool-list">${list.filter(t => t.cat === c.id && !t.custom).map(t => toolRow(t, st)).join('')}</ul></section>`).join('')}
+        <section class="cat">${mineHead()}${mine.length ? `<ul class="tool-list">${mine.map(t => toolRow(t, st)).join('')}</ul>` : '<p class="muted">Add anything that settles you, like cuddling your pet, a hot shower or a favourite song. Your own tools work just like the others.</p>'}</section>`
+      : TL.cat === 'routine' && !TL.q ? `<section class="cat">${routineHead()}<ul class="tool-list">${list.map(t => toolRow(t, st)).join('')}</ul></section>`
+        : TL.cat === 'mine' && !TL.q && !TL.good ? `<section class="cat">${mineHead()}${list.length ? `<ul class="tool-list">${list.map(t => toolRow(t, st)).join('')}</ul>` : empty('wind', 'No tools of your own yet', 'Add anything that settles you, like cuddling your pet, a hot shower or a favourite song.', `<button type="button" class="btn primary" data-act="newtool">${icon('plus')}Add your own tool</button>`)}</section>`
+          : !list.length
+            ? empty('search', 'No tools match', TL.cat === 'fav' && !S.favs.length ? 'You haven’t starred any tools yet. Tap the star next to a tool to add it.' : 'Try another word, or clear the filters.', '<button type="button" class="btn outline" data-act="clear">Clear filters</button>')
+            : `<p class="muted" aria-live="polite">${plural(list.length, 'tool')}</p><ul class="tool-list">${list.map(t => toolRow(t, st)).join('')}</ul>`;
     return `${pageHead('Tools', `${TOOLS.length} body-based ways to settle your nervous system`, { flip: true })}
       <div class="search"><label class="sr" for="tl-q">Search tools</label>${icon('search')}<input id="tl-q" type="search" placeholder="Search, e.g. breath, jaw, sleep" value="${esc(TL.q)}" autocomplete="off"></div>
-      <div class="chips scroll" role="group" aria-label="Group">${[['all', 'All'], ['fav', 'Favourites'], ...CATS.map(c => [c.id, c.name])].map(([id, name]) => `<button type="button" class="chip${TL.cat === id ? ' on' : ''}" data-act="cat" data-id="${id}" aria-pressed="${TL.cat === id}">${id === 'fav' ? icon('star', 'sm') : ''}${name}</button>`).join('')}</div>
+      <div class="chips scroll" role="group" aria-label="Group">${[['all', 'All'], ['fav', 'Favourites'], ['routine', 'Routines'], ['mine', 'Your own'], ...CATS.map(c => [c.id, c.name])].map(([id, name]) => `<button type="button" class="chip${TL.cat === id ? ' on' : ''}" data-act="cat" data-id="${id}" aria-pressed="${TL.cat === id}">${id === 'fav' ? icon('star', 'sm') : ''}${name}</button>`).join('')}</div>
       <div class="chips scroll" role="group" aria-label="Good for"><span class="chips-label">Good for</span>${Object.entries(GOOD).map(([id, name]) => `<button type="button" class="chip${TL.good === id ? ' on' : ''}" data-act="good" data-id="${id}" aria-pressed="${TL.good === id}">${name}</button>`).join('')}</div>
       <div id="tl-list">${body}</div>`;
   },
@@ -146,34 +169,63 @@ VIEWS.tools = {
     clear: () => { Object.assign(TL, { q: '', cat: 'all', good: '' }); render(); },
     open: a => openToolSheet(a.dataset.id),
     fav: a => { favButton(a); if (TL.cat === 'fav') render(); },
+    newroutine: () => editRoutine(),
+    newtool: () => editCustom(),
   },
 };
 
 /* ---------- History ---------- */
 const HI = { f: 'all', shown: 60 };
+const dayHead = k => {
+  const all = entriesOn(k).map(e => e.act), sl = S.sleep[k];
+  return `<h2 class="day-head"><a href="#/history/${k}">${relDay(k)}</a><small>${all.length ? `${plural(all.length, 'check-in')} · average ${f1(avg(all))}` : ''}${sl && sl.hrs !== null ? `${all.length ? ' · ' : ''}${icon('moon', 'sm')}${fmtHrs(sl.hrs)}` : ''}</small></h2>`;
+};
 VIEWS.history = {
   title: 'History',
-  render() {
-    if (!S.entries.length) return `${pageHead('History')}${empty('clock', 'No check-ins yet', 'Your check-ins and the tools you try will show up here.', '<a class="btn primary" href="#/checkin">Check in</a>')}`;
-    const f = { all: () => true, tool: e => e.uses.length > 0, body: e => Object.keys(e.body).length > 0, note: e => !!(e.note || e.uses.some(u => u.note)) }[HI.f];
+  render(param) {
+    if (isKey(param)) return historyDay(param);
+    if (!S.entries.length && !S.glimmers.length) return `${pageHead('History')}${empty('clock', 'No check-ins yet', 'Your check-ins and the tools you try will show up here.', '<a class="btn primary" href="#/checkin">Check in</a>')}`;
+    const chips = `<div class="chips scroll" role="group" aria-label="Show">${[['all', 'All'], ['tool', 'With a tool'], ['body', 'Body marked'], ['note', 'With a note'], ['glim', 'Glimmers']].map(([id, name]) => `<button type="button" class="chip${HI.f === id ? ' on' : ''}" data-act="f" data-id="${id}" aria-pressed="${HI.f === id}">${name}</button>`).join('')}</div>`;
+    const head = pageHead('History', S.entries.length ? `${plural(S.entries.length, 'check-in')} since ${fmtDay(dayOf(S.entries[0].at))}` : '');
+    if (HI.f === 'glim') {
+      const gl = S.glimmers.slice().reverse();
+      const gdays = [];
+      for (const g of gl) { const k = dayOf(g.at); if (!gdays.length || gdays[gdays.length - 1].k !== k) gdays.push({ k, items: [] }); gdays[gdays.length - 1].items.push(g); }
+      return `${head}${chips}${gdays.length ? gdays.map(d => `<section class="day">${dayHead(d.k)}<ul class="plain glim-list card">${d.items.map(glimRow).join('')}</ul></section>`).join('')
+        : empty('spark', 'No glimmers yet', 'Glimmers are small moments of calm, safety or joy. Add them from Today.', '<a class="btn primary" href="#/today">Go to Today</a>')}`;
+    }
+    const f = { all: () => true, tool: e => e.uses.length > 0, body: e => Object.keys(e.body).length > 0, note: e => !!(e.note || e.uses.some(u => u.note)) }[HI.f] || (() => true);
     const list = S.entries.filter(f).slice().reverse();
     const shown = list.slice(0, HI.shown);
     const days = [];
     for (const e of shown) { const k = dayOf(e.at); if (!days.length || days[days.length - 1].k !== k) days.push({ k, items: [] }); days[days.length - 1].items.push(e); }
-    return `${pageHead('History', `${plural(S.entries.length, 'check-in')} since ${fmtDay(dayOf(S.entries[0].at))}`)}
-      <div class="chips scroll" role="group" aria-label="Show">${[['all', 'All'], ['tool', 'With a tool'], ['body', 'Pain or tension'], ['note', 'With a note']].map(([id, name]) => `<button type="button" class="chip${HI.f === id ? ' on' : ''}" data-act="f" data-id="${id}" aria-pressed="${HI.f === id}">${name}</button>`).join('')}</div>
-      ${days.length ? days.map(d => { const all = entriesOn(d.k).map(e => e.act); return `<section class="day"><h2 class="day-head"><span>${relDay(d.k)}</span><small>${plural(all.length, 'check-in')} · average ${f1(avg(all))}</small></h2><ul class="entries">${d.items.map(e => entryCard(e)).join('')}</ul></section>`; }).join('')
+    return `${head}${chips}
+      ${days.length ? days.map(d => { const gl = HI.f === 'all' ? S.glimmers.filter(g => dayOf(g.at) === d.k) : []; return `<section class="day">${dayHead(d.k)}<ul class="entries">${d.items.map(e => entryCard(e)).join('')}</ul>${gl.length ? `<ul class="plain glim-list">${gl.map(glimRow).join('')}</ul>` : ''}</section>`; }).join('')
         : '<p class="muted pad">Nothing matches this filter yet.</p>'}
       ${list.length > HI.shown ? `<button type="button" class="btn outline wide" data-act="more">Show older check-ins</button>` : ''}
-      <button type="button" class="btn ghost wide" data-act="csv">${icon('download')}Export all as a spreadsheet (CSV)</button>`;
+      ${S.entries.length ? `<button type="button" class="btn ghost wide" data-act="csv">${icon('download')}Export all as a spreadsheet (CSV)</button>` : ''}`;
   },
   act: {
     f: a => { HI.f = a.dataset.id; HI.shown = 60; render(); },
     more: () => { HI.shown += 60; render(); },
     csv: () => exportCsv(),
+    editglimmer: a => openGlimmer(a.dataset.id),
+    sleepday: a => openSleep(a.dataset.id),
   },
 };
-
+// One day: its readings on a chart, check-ins, glimmers and the night's sleep.
+function historyDay(k) {
+  const list = entriesOn(k), vals = list.map(e => e.act);
+  const glims = S.glimmers.filter(g => dayOf(g.at) === k);
+  const sl = S.sleep[k];
+  const back = UI.prev === 'insights' ? backBtn('#/insights', 'Insights') : backBtn('#/history', 'History');
+  return `${back}
+    ${pageHead(relDay(k), list.length ? `${plural(list.length, 'check-in')} · average ${f1(avg(vals))} · highest ${Math.max(...vals)}` : 'Nothing logged', { eyebrow: fmtDayLong(k), flip: true })}
+    <div class="day-nav"><a class="btn small ghost" href="#/history/${addDays(k, -1)}">${icon('chev-l')}Day before</a>${k < todayKey() ? `<a class="btn small ghost" href="#/history/${addDays(k, 1)}">Day after${icon('chev-r')}</a>` : ''}</div>
+    ${sl ? `<div class="sleep-line">${icon('moon', 'sm')}<span>Night before: <b>${esc(sleepLine(sl))}</b></span><button type="button" class="btn small ghost" data-act="sleepday" data-id="${k}">Edit</button></div>` : ''}
+    ${list.length ? `<section class="card">${todayChart(list, k)}</section><section><ul class="entries">${list.slice().reverse().map(e => entryCard(e)).join('')}</ul></section>` : empty('clock', 'No check-ins this day', 'Days you check in show up here.')}
+    ${glims.length ? `<section class="card glimmers"><h2 class="h3 with-vig">${ART.vig('glimmer')}Glimmers</h2><ul class="plain glim-list">${glims.map(glimRow).join('')}</ul></section>` : ''}`;
+}
 /* ---------- one check-in ---------- */
 VIEWS.entry = {
   title: 'Check-in', tab: 'history',
@@ -185,13 +237,14 @@ VIEWS.entry = {
     ${pageHead(`${fmtTime(e.at)} check-in`, '', { eyebrow: relDay(dayOf(e.at)), flip: true })}
     <section class="card">
       <div class="big-lvl">${lvl(e.act)}<div><b>${lvlWord(e.act)}</b><p class="muted">${LEVELS[e.act][1]}</p></div></div>
-      ${e.src === 'tool' ? '<p class="hint">Recorded when you started a tool.</p>' : ''}
+      ${e.src === 'tool' ? '<p class="hint">Recorded when you started a tool.</p>' : e.src === 'sos' ? '<p class="hint">Recorded after you pressed SOS: how activated you were when you started.</p>' : ''}
       ${e.feels.length ? `<p class="label">Feelings</p><div class="chips tight">${e.feels.map(f => `<span class="tag">${esc(feelLabel(f))}</span>`).join('')}</div>` : ''}
       ${e.tags.length ? `<p class="label">What was going on</p><div class="chips tight">${e.tags.map(f => `<span class="tag">${esc(tagLabel(f))}</span>`).join('')}</div>` : ''}
+      ${e.trig && e.trig.length ? `<p class="label">Triggers</p><div class="chips tight">${e.trig.map(f => `<span class="tag">${esc(f)}</span>`).join('')}</div>` : ''}
       ${e.note ? `<p class="label">Note</p><p class="note">${esc(e.note)}</p>` : ''}
     </section>
-    ${Object.keys(e.body).length ? `<section class="card"><h2 class="h3">Pain and tension</h2><div class="body-sum">${bodyPair({ fill: r => (e.body[r] ? heatN(e.body[r].n) : null), cls: 'mini' })}
-      <ul class="plain">${bodyList(e.body).map(([r, v]) => `<li><span class="dot" style="background:${heatN(v.n)}"></span><b>${esc(regionShort(r))}</b> ${v.n}/10 <span class="muted">${KINDS[v.k]}</span></li>`).join('')}</ul></div></section>` : ''}
+    ${Object.keys(e.body).length ? `<section class="card"><h2 class="h3">Body</h2><div class="body-sum">${bodyPair({ fill: r => (e.body[r] ? heatN(e.body[r].n) : null), cls: 'mini' })}
+      <ul class="plain">${bodyList(e.body).map(([r, v]) => `<li><span class="dot" style="background:${heatN(v.n)}"></span><b>${esc(regionShort(r))}</b> ${v.n}/10 <span class="muted">${esc(qualText(v))}</span></li>`).join('')}</ul></div></section>` : ''}
     <section><h2 class="h3">Tools</h2>
       ${e.uses.length ? `<ul class="uses">${e.uses.map(u => useCard(e, u)).join('')}</ul>` : '<p class="muted">No tools with this check-in.</p>'}
       ${recent && !(S.active && !S.active.done) ? `<button type="button" class="btn outline wide" data-act="pick">${icon('wind')}Try a tool for this check-in</button>` : ''}</section>
@@ -218,8 +271,9 @@ function useCard(e, u) {
   const b = u.body;
   return `<li class="card use"><div class="row-between"><button type="button" class="linkish h4" data-act="open" data-id="${esc(u.tool)}">${esc(toolName(u.tool))}</button><span class="muted">${fmtTime(u.start || e.at)} · ${u.secs >= u.mins * 60 - 2 ? durLabel(u.mins) : `${fmtSecs(u.secs)} of ${durLabel(u.mins)}`}</span></div>
     ${u.after !== null ? `<p class="use-lvls">${lvlArrow(u.before, u.after)} <span class="${d > 0 ? 'good' : d < 0 ? 'bad' : 'muted'}">${d > 0 ? `${d} calmer` : d < 0 ? `${-d} higher` : 'no change'}</span></p>` : '<p class="muted">Not rated</p>'}
+    ${u.parts && u.parts.length ? `<p class="muted parts-done">${u.parts.map(id => esc(toolName(id))).join(' → ')}</p>` : ''}
     ${u.rating ? `<p>Worked: <b>${RATINGS[u.rating - 1]}</b> (${u.rating}/5)</p>` : ''}
-    ${b ? `<p class="muted">${icon('body', 'sm')}Pain and tension after: ${esc(bodySummary(b, 4) || 'none')}</p>` : ''}
+    ${b ? `<p class="muted">${icon('body', 'sm')}Body after: ${esc(bodySummary(b, 4) || 'none')}</p>` : ''}
     ${u.note ? `<p class="note">${esc(u.note)}</p>` : ''}
     <div class="btn-row"><button type="button" class="btn small ghost" data-act="editUse" data-id="${esc(u.id)}">${icon('edit')}Edit</button><button type="button" class="btn small ghost danger-text" data-act="delUse" data-id="${esc(u.id)}">${icon('trash')}Remove</button></div></li>`;
 }
